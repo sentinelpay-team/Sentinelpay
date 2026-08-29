@@ -1,0 +1,21 @@
+name: SentinelPay CI
+
+on:
+  push:
+    branches:
+      - cicd-pipeline
+
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test-workflow:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Confirm workflow is running
+        run: echo "SentinelPay GitHub Actions pipeline is working"
