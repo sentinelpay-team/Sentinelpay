@@ -19,3 +19,16 @@ jobs:
 
       - name: Confirm workflow is running
         run: echo "SentinelPay GitHub Actions pipeline is working"
+
+  gitleaks:
+    name: Gitleaks Secret Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout full Git history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
