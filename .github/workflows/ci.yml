@@ -39,5 +39,9 @@ jobs:
           sudo mv gitleaks /usr/local/bin/gitleaks
           gitleaks version
 
-      - name: Run Gitleaks
-        run: gitleaks git . --redact --verbose
+      - name: Run SentinelPay Gitleaks scan
+        run: |
+          gitleaks git . \
+            --config .gitleaks.toml \
+            --redact \
+            --verbose
