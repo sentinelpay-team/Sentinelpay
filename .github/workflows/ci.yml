@@ -69,3 +69,147 @@ jobs:
           bandit -r Amdari-Project--02/services/payments-api/app \
            Amdari-Project--02/services/kyc-api/app \
            -lll -ii
+  semgrep:
+    name: Semgrep SAST Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Semgrep
+        run: |
+          python -m pip install --upgrade pip
+          pip install semgrep
+
+      - name: Run Semgrep security scan
+        run: |
+          semgrep scan \
+            --config p/python \
+            --config p/security-audit \
+            --severity ERROR \
+            --error \
+            Amdari-Project--02/services
+  trivy-dependencies:
+    name: Trivy Dependency Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+            | gpg --dearmor \
+            | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
+            | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+      - name: Scan SentinelPay dependencies
+        run: |
+          trivy fs Amdari-Project--02 \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --exit-code 1
+  checkov:
+    name: Checkov Terraform Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Checkov
+        run: |
+          python -m pip install --upgrade pip
+          pip install checkov
+
+      - name: Run Checkov
+        run: |
+          checkov \
+            -d infra \
+            --framework terraform \
+            --hard-fail-on HIGH,CRITICAL \
+            --soft-fail-on LOW,MEDIUM \
+            --compact
+  tfsec:
+    name: tfsec Terraform Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install tfsec
+        run: |
+          TFSEC_VERSION="v1.28.13"
+          curl -sSL \
+            "https://github.com/aquasecurity/tfsec/releases/download/${TFSEC_VERSION}/tfsec-linux-amd64" \
+            -o tfsec
+          chmod +x tfsec
+          sudo mv tfsec /usr/local/bin/tfsec
+          tfsec --version
+
+      - name: Run tfsec
+        run: |
+          tfsec infra \
+            --minimum-severity HIGH \
+            --no-colour
+  trivy-images:
+    name: Trivy Container Image Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Build payments-api image
+        run: |
+          docker build \
+            -t sentinelpay-payments:${{ github.sha }} \
+            Amdari-Project--02/services/payments-api
+
+      - name: Build kyc-api image
+        run: |
+          docker build \
+            -t sentinelpay-kyc:${{ github.sha }} \
+            Amdari-Project--02/services/kyc-api
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+            | gpg --dearmor \
+            | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
+            | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+      - name: Scan payments-api image
+        run: |
+          trivy image sentinelpay-payments:${{ github.sha }} \
+            --severity HIGH,CRITICAL \
+            --exit-code 1
+
+      - name: Scan kyc-api image
+        run: |
+          trivy image sentinelpay-kyc:${{ github.sha }} \
+            --severity HIGH,CRITICAL \
+            --exit-code 1
