@@ -67,5 +67,5 @@ jobs:
       - name: Scan SentinelPay Python services
         run: |
           bandit -r Amdari-Project--02/services/payments-api/app \
-                 Amdari-Project--02/services/kyc-api/app \
-                 -ll -ii
+           Amdari-Project--02/services/kyc-api/app \
+           -lll -ii
