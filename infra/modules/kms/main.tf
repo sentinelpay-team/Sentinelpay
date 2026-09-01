@@ -1,23 +1,34 @@
 data "aws_caller_identity" "current" {}
 
+data "aws_region" "current" {}
+
 data "aws_iam_policy_document" "this" {
 
+  # ------------------------------------------------
+  # Account root
+  # ------------------------------------------------
   statement {
     sid    = "EnableAccountRoot"
     effect = "Allow"
 
     principals {
       type = "AWS"
+
       identifiers = [
         "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
       ]
     }
 
-    actions   = ["kms:*"]
+    actions = [
+      "kms:*"
+    ]
+
     resources = ["*"]
   }
 
-  # Administrators manage the key.
+  # ------------------------------------------------
+  # KMS administrators
+  # ------------------------------------------------
   statement {
     sid    = "KeyAdministrators"
     effect = "Allow"
@@ -47,7 +58,9 @@ data "aws_iam_policy_document" "this" {
     resources = ["*"]
   }
 
-  # Applications/services use the key.
+  # ------------------------------------------------
+  # Application/service roles
+  # ------------------------------------------------
   statement {
     sid    = "KeyUsers"
     effect = "Allow"
@@ -68,6 +81,9 @@ data "aws_iam_policy_document" "this" {
     resources = ["*"]
   }
 
+  # ------------------------------------------------
+  # AWS-resource grants
+  # ------------------------------------------------
   statement {
     sid    = "ServiceGrants"
     effect = "Allow"
@@ -88,7 +104,198 @@ data "aws_iam_policy_document" "this" {
     condition {
       test     = "Bool"
       variable = "kms:GrantIsForAWSResource"
-      values   = ["true"]
+
+      values = [
+        "true"
+      ]
+    }
+  }
+
+  # ------------------------------------------------
+  # CloudTrail
+  # ------------------------------------------------
+  statement {
+    sid    = "AllowCloudTrailGenerateDataKey"
+    effect = "Allow"
+
+    principals {
+      type = "Service"
+
+      identifiers = [
+        "cloudtrail.amazonaws.com"
+      ]
+    }
+
+    actions = [
+      "kms:GenerateDataKey*"
+    ]
+
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceArn"
+
+      values = [
+        "arn:aws:cloudtrail:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:trail/${var.project_name}-${var.environment}-trail"
+      ]
+    }
+  }
+
+  statement {
+    sid    = "AllowCloudTrailDescribeKey"
+    effect = "Allow"
+
+    principals {
+      type = "Service"
+
+      identifiers = [
+        "cloudtrail.amazonaws.com"
+      ]
+    }
+
+    actions = [
+      "kms:DescribeKey"
+    ]
+
+    resources = ["*"]
+  }
+
+  # ------------------------------------------------
+  # Secrets Manager
+  # ------------------------------------------------
+  statement {
+    sid    = "AllowSecretsManagerUse"
+    effect = "Allow"
+
+    principals {
+      type = "Service"
+
+      identifiers = [
+        "secretsmanager.amazonaws.com"
+      ]
+    }
+
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey"
+    ]
+
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+
+      values = [
+        "secretsmanager.${data.aws_region.current.region}.amazonaws.com"
+      ]
+    }
+  }
+
+  # ------------------------------------------------
+  # S3
+  # ------------------------------------------------
+  statement {
+    sid    = "AllowS3Use"
+    effect = "Allow"
+
+    principals {
+      type = "Service"
+
+      identifiers = [
+        "s3.amazonaws.com"
+      ]
+    }
+
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey"
+    ]
+
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+
+      values = [
+        "s3.${data.aws_region.current.region}.amazonaws.com"
+      ]
+    }
+  }
+  # ------------------------------------------------
+# AWS Config
+# ------------------------------------------------
+statement {
+  sid    = "AllowAWSConfigUse"
+  effect = "Allow"
+
+  principals {
+    type = "Service"
+
+    identifiers = [
+      "config.amazonaws.com"
+    ]
+  }
+
+  actions = [
+    "kms:Encrypt",
+    "kms:Decrypt",
+    "kms:GenerateDataKey*",
+    "kms:DescribeKey"
+  ]
+
+  resources = ["*"]
+
+  condition {
+    test     = "StringEquals"
+    variable = "AWS:SourceAccount"
+
+    values = [
+      data.aws_caller_identity.current.account_id
+    ]
+  }
+}
+
+  # ------------------------------------------------
+  # RDS
+  # ------------------------------------------------
+  statement {
+    sid    = "AllowRDSUse"
+    effect = "Allow"
+
+    principals {
+      type = "Service"
+
+      identifiers = [
+        "rds.amazonaws.com"
+      ]
+    }
+
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey",
+      "kms:CreateGrant"
+    ]
+
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+
+      values = [
+        "rds.${data.aws_region.current.region}.amazonaws.com"
+      ]
     }
   }
 }
@@ -99,6 +306,12 @@ resource "aws_kms_key" "this" {
   enable_key_rotation     = true
 
   policy = data.aws_iam_policy_document.this.json
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-data-kms"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
 }
 
 resource "aws_kms_alias" "this" {

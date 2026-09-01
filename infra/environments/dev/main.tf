@@ -207,3 +207,33 @@ module "github_oidc" {
     local.github_deployment_policy
   )
 }
+module "data" {
+  source = "../../modules/data"
+
+  project_name = var.project_name
+  environment  = var.environment
+
+  vpc_id = module.network.vpc_id
+
+  private_subnet_ids = module.network.private_subnet_ids
+
+  application_security_group_id = module.compute.ecs_security_group_id
+
+  kms_key_arn = module.kms.key_arn
+}
+
+module "detection" {
+  source = "../../modules/detection"
+
+  project_name = var.project_name
+  environment  = var.environment
+  aws_region   = var.aws_region
+
+  vpc_id = module.network.vpc_id
+
+  kms_key_arn = module.kms.key_arn
+
+  cloudtrail_retention_days = 365
+
+  enable_eks_guardduty = false
+}
