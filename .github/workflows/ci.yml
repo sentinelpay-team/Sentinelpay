@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - cicd-pipeline
+      - main
 
   pull_request:
     branches:
