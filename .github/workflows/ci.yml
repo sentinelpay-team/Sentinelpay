@@ -203,13 +203,28 @@ jobs:
           sudo apt-get install -y trivy
 
       - name: Scan payments-api image
+        id: trivy_payments
+        continue-on-error: true
         run: |
           trivy image sentinelpay-payments:${{ github.sha }} \
             --severity HIGH,CRITICAL \
             --exit-code 1
 
       - name: Scan kyc-api image
+        id: trivy_kyc
+        continue-on-error: true
         run: |
           trivy image sentinelpay-kyc:${{ github.sha }} \
             --severity HIGH,CRITICAL \
             --exit-code 1
+
+      - name: Enforce Trivy image security gate
+        if: always()
+        run: |
+          if [ "${{ steps.trivy_payments.outcome }}" = "failure" ] || \
+             [ "${{ steps.trivy_kyc.outcome }}" = "failure" ]; then
+            echo "HIGH or CRITICAL vulnerabilities detected in one or more SentinelPay images."
+            exit 1
+          fi
+
+          echo "No HIGH or CRITICAL vulnerabilities detected."
