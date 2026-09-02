@@ -10,6 +10,10 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   test-workflow:
     runs-on: ubuntu-latest
@@ -228,3 +232,24 @@ jobs:
           fi
 
           echo "No HIGH or CRITICAL vulnerabilities detected."
+  aws-oidc-test:
+    name: Test AWS OIDC Authentication
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          role-to-assume: arn:aws:iam::105045466108:role/sentinelpay-dev-github-actions
+          aws-region: eu-west-2
+
+      - name: Verify AWS identity
+        run: |
+          aws sts get-caller-identity
