@@ -204,7 +204,7 @@ Application bugs should be directed to the AppSec team when they could affect:
 - input validation or trust boundaries;
 - security controls or rate limiting.
 
-Use the repository's `appsec_intake.md` as the intake template.
+Use the repository's `appsec_intake.yml` as the intake template.
 
 When submitting an AppSec issue, include:
 
