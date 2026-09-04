@@ -59,8 +59,6 @@ keywords = [
 paths = [
   '''\.env\.example$''',
 ]
-
-[allowlist]
 regexes = [
   '''sentinelpay-dev-secret''',
 ]
