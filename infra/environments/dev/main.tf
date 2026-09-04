@@ -66,6 +66,8 @@ module "compute" {
 resource "random_password" "database" {
   length  = 32
   special = true
+
+  override_special = "!#$%&*()-_=+[]{}:?"
 }
 module "security_iam" {
   source = "../../modules/security-iam"
