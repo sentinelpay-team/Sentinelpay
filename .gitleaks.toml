@@ -54,3 +54,13 @@ keywords = [
   "access_key",
   "secret_key"
 ]
+
+[allowlist]
+paths = [
+  '''\.env\.example$''',
+]
+
+[allowlist]
+regexes = [
+  '''sentinelpay-dev-secret''',
+]
