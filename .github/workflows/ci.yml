@@ -3,7 +3,6 @@ name: SentinelPay CI
 on:
   push:
     branches:
-      - cicd-pipeline
       - main
 
   pull_request:
