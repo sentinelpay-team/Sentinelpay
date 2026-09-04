@@ -248,7 +248,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v6.2.3
         with:
           role-to-assume: arn:aws:iam::105045466108:role/sentinelpay-dev-github-actions
-          aws-region: eu-west-2
+          aws-region: eu-west-1
 
       - name: Verify AWS identity
         run: |
