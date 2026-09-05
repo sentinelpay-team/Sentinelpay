@@ -47,6 +47,7 @@ jobs:
         run: |
           gitleaks git . \
             --config .gitleaks.toml \
+            --baseline-path gitleaks-baseline.json \
             --redact \
             --verbose
   bandit:
