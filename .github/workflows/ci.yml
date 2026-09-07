@@ -211,6 +211,8 @@ jobs:
         run: |
           trivy image sentinelpay-payments:${{ github.sha }} \
             --severity HIGH,CRITICAL \
+            --format json \
+            --output trivy-payments-report.json \
             --exit-code 1
 
       - name: Scan kyc-api image
@@ -219,8 +221,17 @@ jobs:
         run: |
           trivy image sentinelpay-kyc:${{ github.sha }} \
             --severity HIGH,CRITICAL \
+            --format json \
+            --output trivy-kyc-report.json \
             --exit-code 1
-
+      - name: Upload Trivy image scan reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-scan-reports
+          path: |
+            trivy-payments-report.json
+            trivy-kyc-report.json
       - name: Enforce Trivy image security gate
         if: always()
         run: |
