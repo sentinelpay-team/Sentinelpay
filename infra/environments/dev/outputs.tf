@@ -40,3 +40,12 @@ output "quarantine_security_group_id" {
 output "quarantine_lambda_name" {
   value = module.detection.quarantine_lambda_name
 }
+output "github_actions_role_arn" {
+  description = "IAM role ARN used by GitHub Actions through OIDC"
+  value       = module.github_oidc.role_arn
+}
+
+output "github_oidc_provider_arn" {
+  description = "GitHub OIDC provider ARN"
+  value       = module.github_oidc.oidc_provider_arn
+}
