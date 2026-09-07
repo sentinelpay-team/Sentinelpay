@@ -97,3 +97,4 @@ Your first commit should not be a fix. Your first commit should be the threat mo
 - Slack: `#sentinelpay-capstone`
 
 Good luck. Make it boring to attack.
+
