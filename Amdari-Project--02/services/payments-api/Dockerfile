@@ -1,11 +1,14 @@
 FROM python:3.11-alpine
 
+RUN apk update && apk upgrade --no-cache
+
 WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --upgrade --no-cache-dir pip setuptools wheel && \
     pip install --no-cache-dir -r requirements.txt
 COPY . .
+RUN rm -f *.lock *old.txt *bak.txt Pipfile* poetry*
 
 # Create a non-root user and group, then change ownership of the working directory
 RUN addgroup -S appgroup && \
