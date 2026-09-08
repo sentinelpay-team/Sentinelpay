@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-alpine
 
 WORKDIR /app
 
@@ -8,8 +8,8 @@ RUN pip install --upgrade --no-cache-dir pip setuptools wheel && \
 COPY . .
 
 # Create a non-root user and group, then change ownership of the working directory
-RUN groupadd -r appgroup && \
-    useradd -r -g appgroup -d /app -s /sbin/nologin appuser && \
+RUN addgroup -S appgroup && \
+    adduser -S -G appgroup -h /app -s /sbin/nologin appuser && \
     chown -R appuser:appgroup /app
 
 # Added HEALTHCHECK for the application on port 8002
