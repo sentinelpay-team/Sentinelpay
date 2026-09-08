@@ -61,7 +61,13 @@ variable "github_branch" {
 
 }
 
+variable "container_port" {
+  description = "Application container port"
+  type        = number
+}
+
 variable "acm_certificate_arn" {
   description = "ARN of the ACM certificate used by the ALB HTTPS listener"
   type        = string
+  default     = null
 }

@@ -14,12 +14,13 @@ module "network" {
 module "edge" {
   source = "../../modules/edge"
 
-  project_name      = var.project_name
-  environment       = var.environment
+  project_name = var.project_name
+  environment  = var.environment
+
   vpc_id            = module.network.vpc_id
   public_subnet_ids = module.network.public_subnet_ids
-  container_port    = 80
 
+  container_port      = var.container_port
   acm_certificate_arn = var.acm_certificate_arn
 }
 
