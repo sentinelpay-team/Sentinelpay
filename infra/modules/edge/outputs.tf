@@ -11,5 +11,6 @@ output "target_group_arn" {
 }
 
 output "listener_arn" {
-  value = aws_lb_listener.http.arn
+  description = "ARN of the HTTPS listener"
+  value       = try(aws_lb_listener.https[0].arn, null)
 }

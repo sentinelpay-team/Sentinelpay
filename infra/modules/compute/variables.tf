@@ -36,3 +36,7 @@ variable "desired_count" {
   type    = number
   default = 1
 }
+variable "kms_key_arn" {
+  description = "ARN of the KMS key used to encrypt CloudWatch Logs"
+  type        = string
+}

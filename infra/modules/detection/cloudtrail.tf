@@ -119,20 +119,18 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
 
   policy = data.aws_iam_policy_document.cloudtrail_bucket.json
 }
+resource "aws_sns_topic" "cloudtrail" {
+  name = "${var.project_name}-${var.environment}-cloudtrail-notifications"
+}
 resource "aws_cloudtrail" "this" {
-  name = "${var.project_name}-${var.environment}-trail"
-
-  s3_bucket_name = aws_s3_bucket.cloudtrail.bucket
-
-  kms_key_id = var.kms_key_arn
-
-  enable_log_file_validation = true
-
+  name                          = "${var.project_name}-${var.environment}-trail"
+  s3_bucket_name                = aws_s3_bucket.cloudtrail.bucket
+  kms_key_id                    = var.kms_key_arn
+  enable_log_file_validation    = true
   include_global_service_events = true
-
-  is_multi_region_trail = true
-
-  enable_logging = true
+  is_multi_region_trail         = true
+  enable_logging                = true
+  sns_topic_name                = aws_sns_topic.cloudtrail.arn
 
   event_selector {
     read_write_type           = "All"

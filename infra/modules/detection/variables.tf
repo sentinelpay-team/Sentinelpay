@@ -27,3 +27,7 @@ variable "enable_eks_guardduty" {
   type    = bool
   default = false
 }
+
+variable "private_subnet_ids" {
+  type = list(string)
+}

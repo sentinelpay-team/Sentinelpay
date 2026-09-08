@@ -8,9 +8,9 @@ resource "aws_security_group" "quarantine" {
     Environment = var.environment
   }
 }
-resource "aws_cloudwatch_event_rule" "guardduty_high" {
-  name = "${var.project_name}-${var.environment}-guardduty-high"
 
+resource "aws_cloudwatch_event_rule" "guardduty_high" {
+  name        = "${var.project_name}-${var.environment}-guardduty-high"
   description = "Triggers automated containment for high-severity GuardDuty findings"
 
   event_pattern = jsonencode({
@@ -34,6 +34,7 @@ resource "aws_cloudwatch_event_rule" "guardduty_high" {
     }
   })
 }
+
 resource "aws_iam_role" "quarantine" {
   name = "${var.project_name}-${var.environment}-quarantine-lambda"
 
@@ -53,6 +54,7 @@ resource "aws_iam_role" "quarantine" {
     ]
   })
 }
+
 resource "aws_iam_role_policy" "quarantine" {
   role = aws_iam_role.quarantine.id
 
@@ -61,49 +63,147 @@ resource "aws_iam_role_policy" "quarantine" {
 
     Statement = [
       {
+        Sid    = "DescribeNetworkInterfaces"
         Effect = "Allow"
 
         Action = [
-          "ec2:DescribeNetworkInterfaces",
-          "ec2:ModifyNetworkInterfaceAttribute"
+          "ec2:DescribeNetworkInterfaces"
         ]
 
         Resource = "*"
       },
 
       {
+        Sid    = "ManageLambdaNetworkInterfaces"
         Effect = "Allow"
 
         Action = [
-          "logs:CreateLogGroup",
+          "ec2:CreateNetworkInterface",
+          "ec2:DeleteNetworkInterface",
+          "ec2:ModifyNetworkInterfaceAttribute"
+        ]
+
+        Resource = "arn:aws:ec2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:network-interface/*"
+      },
+
+      {
+        Sid    = "CreateLambdaLogGroup"
+        Effect = "Allow"
+
+        Action = [
+          "logs:CreateLogGroup"
+        ]
+
+        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project_name}-${var.environment}-quarantine"
+      },
+
+      {
+        Sid    = "WriteLambdaLogs"
+        Effect = "Allow"
+
+        Action = [
           "logs:CreateLogStream",
           "logs:PutLogEvents"
         ]
 
+        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project_name}-${var.environment}-quarantine:*"
+      },
+
+      {
+        Sid    = "WriteXRayTracing"
+        Effect = "Allow"
+
+        Action = [
+          "xray:PutTraceSegments",
+          "xray:PutTelemetryRecords"
+        ]
+
         Resource = "*"
+      },
+
+      {
+        Sid    = "SendToDeadLetterQueue"
+        Effect = "Allow"
+
+        Action = [
+          "sqs:SendMessage"
+        ]
+
+        Resource = aws_sqs_queue.quarantine_dlq.arn
       }
     ]
   })
 }
+
 data "archive_file" "quarantine" {
   type = "zip"
 
   source_file = "${path.module}/lambda/quarantine.py"
-
   output_path = "${path.module}/quarantine.zip"
 }
+
+# Lambda code-signing profile
+resource "aws_signer_signing_profile" "quarantine" {
+  platform_id = "AWSLambda-SHA384-ECDSA"
+
+  name_prefix = "${var.project_name}_${var.environment}_quarantine_"
+}
+
+# Lambda code-signing configuration
+resource "aws_lambda_code_signing_config" "quarantine" {
+  description = "Code signing configuration for quarantine Lambda"
+
+  allowed_publishers {
+    signing_profile_version_arns = [
+      aws_signer_signing_profile.quarantine.version_arn
+    ]
+  }
+
+  policies {
+    untrusted_artifact_on_deployment = "Warn"
+  }
+}
+
+# Dead Letter Queue
+resource "aws_sqs_queue" "quarantine_dlq" {
+  name              = "${var.project_name}-${var.environment}-quarantine-dlq"
+  kms_master_key_id = var.kms_key_arn
+}
+
 resource "aws_lambda_function" "quarantine" {
   function_name = "${var.project_name}-${var.environment}-quarantine"
 
-  role = aws_iam_role.quarantine.arn
-
+  role    = aws_iam_role.quarantine.arn
   runtime = "python3.13"
-
   handler = "quarantine.lambda_handler"
 
-  filename = data.archive_file.quarantine.output_path
-
+  filename         = data.archive_file.quarantine.output_path
   source_code_hash = data.archive_file.quarantine.output_base64sha256
+
+  # CKV_AWS_173
+  kms_key_arn = var.kms_key_arn
+
+  # CKV_AWS_272
+  code_signing_config_arn = aws_lambda_code_signing_config.quarantine.arn
+
+  # CKV_AWS_115
+  reserved_concurrent_executions = 5
+
+  # CKV_AWS_50
+  tracing_config {
+    mode = "Active"
+  }
+
+  # CKV_AWS_116
+  dead_letter_config {
+    target_arn = aws_sqs_queue.quarantine_dlq.arn
+  }
+
+  # CKV_AWS_117
+  vpc_config {
+    subnet_ids         = var.private_subnet_ids
+    security_group_ids = [aws_security_group.quarantine.id]
+  }
 
   environment {
     variables = {
@@ -115,9 +215,9 @@ resource "aws_lambda_function" "quarantine" {
     aws_iam_role_policy.quarantine
   ]
 }
-resource "aws_cloudwatch_event_target" "guardduty" {
-  rule = aws_cloudwatch_event_rule.guardduty_high.name
 
+resource "aws_cloudwatch_event_target" "guardduty" {
+  rule      = aws_cloudwatch_event_rule.guardduty_high.name
   target_id = "QuarantineLambda"
 
   arn = aws_lambda_function.quarantine.arn
@@ -126,11 +226,8 @@ resource "aws_cloudwatch_event_target" "guardduty" {
 resource "aws_lambda_permission" "eventbridge" {
   statement_id = "AllowEventBridgeGuardDuty"
 
-  action = "lambda:InvokeFunction"
-
+  action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.quarantine.function_name
-
-  principal = "events.amazonaws.com"
-
-  source_arn = aws_cloudwatch_event_rule.guardduty_high.arn
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.guardduty_high.arn
 }
