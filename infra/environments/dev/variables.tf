@@ -58,4 +58,10 @@ variable "github_branch" {
   description = "GitHub branch allowed to assume the AWS role"
   type        = string
   default     = "main"
+
+}
+
+variable "acm_certificate_arn" {
+  description = "ARN of the ACM certificate used by the ALB HTTPS listener"
+  type        = string
 }

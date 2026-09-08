@@ -12,42 +12,33 @@ module "network" {
 
 
 module "edge" {
-
   source = "../../modules/edge"
 
-  project_name = var.project_name
-
-  environment = var.environment
-
-  vpc_id = module.network.vpc_id
-
+  project_name      = var.project_name
+  environment       = var.environment
+  vpc_id            = module.network.vpc_id
   public_subnet_ids = module.network.public_subnet_ids
+  container_port    = 80
 
-  container_port = 80
+  acm_certificate_arn = var.acm_certificate_arn
 }
 
 
 module "compute" {
-
   source = "../../modules/compute"
 
-  project_name = var.project_name
-
-  environment = var.environment
-
-  vpc_id = module.network.vpc_id
-
-  private_subnet_ids = module.network.private_subnet_ids
-
+  project_name          = var.project_name
+  environment           = var.environment
+  vpc_id                = module.network.vpc_id
+  private_subnet_ids    = module.network.private_subnet_ids
   alb_security_group_id = module.edge.alb_security_group_id
-
-  target_group_arn = module.edge.target_group_arn
+  target_group_arn      = module.edge.target_group_arn
 
   container_image = "nginx:alpine"
+  container_port  = 80
+  desired_count   = 1
 
-  container_port = 80
-
-  desired_count = 1
+  kms_key_arn = module.kms.key_arn
 }
 resource "random_password" "database" {
   length  = 32
@@ -220,6 +211,6 @@ module "detection" {
   kms_key_arn = module.kms.key_arn
 
   cloudtrail_retention_days = 365
-
-  enable_eks_guardduty = false
+  private_subnet_ids        = module.network.private_subnet_ids
+  enable_eks_guardduty      = false
 }

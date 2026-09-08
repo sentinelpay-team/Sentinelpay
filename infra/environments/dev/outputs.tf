@@ -49,3 +49,8 @@ output "github_oidc_provider_arn" {
   description = "GitHub OIDC provider ARN"
   value       = module.github_oidc.oidc_provider_arn
 }
+
+output "kms_key_arn" {
+  description = "ARN of the customer-managed KMS key"
+  value       = module.kms.key_arn
+}
