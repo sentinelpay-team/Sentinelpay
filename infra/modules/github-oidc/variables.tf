@@ -20,6 +20,6 @@ variable "github_branch" {
 }
 
 variable "deployment_policy_json" {
-  description = "IAM policy assigned to GitHub deployment role"
+  description = "IAM deployment policy JSON for GitHub Actions"
   type        = string
 }

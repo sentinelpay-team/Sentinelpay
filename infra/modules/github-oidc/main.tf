@@ -7,7 +7,6 @@ resource "aws_iam_openid_connect_provider" "github" {
 }
 
 data "aws_iam_policy_document" "github_trust" {
-
   statement {
     effect = "Allow"
 
@@ -37,7 +36,8 @@ data "aws_iam_policy_document" "github_trust" {
       variable = "token.actions.githubusercontent.com:sub"
 
       values = [
-        "repo:${var.github_organization}/${var.github_repository}:ref:refs/heads/${var.github_branch}"
+        "repo:${var.github_organization}/${var.github_repository}:ref:refs/heads/${var.github_branch}",
+        "repo:${var.github_organization}/${var.github_repository}:pull_request"
       ]
     }
   }
@@ -46,15 +46,13 @@ data "aws_iam_policy_document" "github_trust" {
 resource "aws_iam_role" "github" {
   name = "${var.project_name}-${var.environment}-github-actions"
 
-  assume_role_policy = data.aws_iam_policy_document.github_trust.json
-
-  max_session_duration = 3600
+  assume_role_policy    = data.aws_iam_policy_document.github_trust.json
+  max_session_duration  = 3600
 }
 
 resource "aws_iam_role_policy" "deployment" {
-  name = "${var.project_name}-deployment"
+  name = "deployment-policy"
 
-  role = aws_iam_role.github.id
-
+  role   = aws_iam_role.github.id
   policy = var.deployment_policy_json
 }
