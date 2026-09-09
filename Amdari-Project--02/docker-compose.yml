@@ -1,12 +1,9 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:15-alpine
     container_name: sentinelpay-postgres
     read_only: true          # Enforcing a read-only filesystem
     tmpfs:                   # Only allow write access to these directories
-      - /var/lib/postgresql/data
       - /var/run/postgresql
       - /tmp
     environment:
