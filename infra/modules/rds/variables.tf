@@ -44,3 +44,8 @@ variable "postgres_version" {
   type    = string
   default = "17"
 }
+variable "postgres_parameter_group_family" {
+  description = "PostgreSQL DB parameter group family"
+  type        = string
+  default     = "postgres16"
+}

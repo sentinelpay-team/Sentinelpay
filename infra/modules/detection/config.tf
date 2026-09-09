@@ -37,12 +37,28 @@ resource "random_id" "config_suffix" {
 }
 
 resource "aws_s3_bucket" "config" {
+  # checkov:skip=CKV_AWS_144:Cross-region replication is intentionally not enabled in development; production disaster-recovery replication is managed separately
   bucket = "${var.project_name}-${var.environment}-config-${random_id.config_suffix.hex}"
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-config"
     Environment = var.environment
   }
+}
+# ---------------------------------------------------------
+# AWS Config S3 Access Logging
+# CKV_AWS_18
+# ---------------------------------------------------------
+
+resource "aws_s3_bucket_logging" "config" {
+  bucket = aws_s3_bucket.config.id
+
+  target_bucket = aws_s3_bucket.access_logs.id
+  target_prefix = "config-access-logs/"
+
+  depends_on = [
+    aws_s3_bucket_policy.access_logs
+  ]
 }
 data "aws_iam_policy_document" "config_bucket" {
 
@@ -205,4 +221,39 @@ resource "aws_config_conformance_pack" "cis" {
   depends_on = [
     aws_config_configuration_recorder_status.this
   ]
+}
+resource "aws_s3_bucket_versioning" "config" {
+  bucket = aws_s3_bucket.config.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "config" {
+  bucket = aws_s3_bucket.config.id
+
+  rule {
+    id     = "config-retention"
+    status = "Enabled"
+
+    filter {}
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 365
+    }
+  }
+
+  depends_on = [
+    aws_s3_bucket_versioning.config
+  ]
+}
+
+resource "aws_s3_bucket_notification" "config" {
+  bucket      = aws_s3_bucket.config.id
+  eventbridge = true
 }

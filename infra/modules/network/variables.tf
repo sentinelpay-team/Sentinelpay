@@ -1,39 +1,40 @@
 variable "project_name" {
-  type = string
+  description = "Project name"
+  type        = string
 }
 
 variable "environment" {
-  type = string
+  description = "Deployment environment"
+  type        = string
 }
 
 variable "vpc_cidr" {
-  type    = string
-  default = "10.0.0.0/16"
+  description = "CIDR block for the VPC"
+  type        = string
 }
 
 variable "public_subnet_cidrs" {
-  type = list(string)
-
-  default = [
-    "10.0.1.0/24",
-    "10.0.2.0/24"
-  ]
+  description = "CIDR blocks for public subnets"
+  type        = list(string)
 }
 
 variable "private_subnet_cidrs" {
-  type = list(string)
-
-  default = [
-    "10.0.11.0/24",
-    "10.0.12.0/24"
-  ]
+  description = "CIDR blocks for private subnets"
+  type        = list(string)
 }
 
 variable "availability_zones" {
-  type = list(string)
+  description = "Availability zones"
+  type        = list(string)
+}
 
-  default = [
-    "eu-west-1a",
-    "eu-west-1b"
-  ]
+variable "kms_key_arn" {
+  description = "KMS key ARN used to encrypt VPC Flow Log CloudWatch logs"
+  type        = string
+}
+
+variable "tags" {
+  description = "Common resource tags"
+  type        = map(string)
+  default     = {}
 }

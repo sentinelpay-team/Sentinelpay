@@ -61,13 +61,36 @@ variable "github_branch" {
 
 }
 
-variable "container_port" {
-  description = "Application container port"
-  type        = number
-}
-
 variable "acm_certificate_arn" {
   description = "ARN of the ACM certificate used by the ALB HTTPS listener"
   type        = string
   default     = null
+}
+variable "name_prefix" {
+  description = "Prefix used for naming compute resources"
+  type        = string
+  default     = null
+}
+
+variable "tags" {
+  description = "Common tags to apply to compute resources"
+  type        = map(string)
+  default     = {}
+}
+variable "container_image" {
+  description = "Docker image used by the ECS task"
+  type        = string
+  default     = "nginx:alpine"
+}
+
+variable "container_port" {
+  description = "Port exposed by the ECS container"
+  type        = number
+  default     = 80
+}
+
+variable "desired_count" {
+  description = "Desired number of ECS tasks"
+  type        = number
+  default     = 1
 }

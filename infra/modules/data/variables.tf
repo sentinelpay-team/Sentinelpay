@@ -31,3 +31,8 @@ variable "redis_node_type" {
   type    = string
   default = "cache.t4g.micro"
 }
+variable "redis_rotation_lambda_arn" {
+  description = "ARN of the Lambda function used to rotate the Redis authentication secret"
+  type        = string
+  default     = null
+}

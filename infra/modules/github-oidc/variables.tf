@@ -1,25 +1,30 @@
 variable "project_name" {
-  type = string
+  description = "Name of the project"
+  type        = string
 }
 
 variable "environment" {
-  type = string
+  description = "Deployment environment"
+  type        = string
 }
 
 variable "github_organization" {
-  type = string
+  description = "GitHub organisation that owns the repository"
+  type        = string
 }
 
 variable "github_repository" {
-  type = string
+  description = "GitHub repository allowed to assume the AWS role"
+  type        = string
 }
 
 variable "github_branch" {
-  type    = string
-  default = "main"
+  description = "GitHub branch allowed to assume the AWS deployment role"
+  type        = string
+  default     = "main"
 }
 
 variable "deployment_policy_json" {
-  description = "IAM deployment policy JSON for GitHub Actions"
+  description = "IAM deployment policy JSON attached to the GitHub Actions role"
   type        = string
 }
