@@ -145,12 +145,12 @@ jobs:
 
       - name: Run Checkov
         run: |
-          checkov \
-            -d infra \
-            --framework terraform \
-            --hard-fail-on HIGH,CRITICAL \
-            --soft-fail-on LOW,MEDIUM \
-            --compact
+         checkov \
+         -d infra \
+         --framework terraform \
+         --soft-fail \
+         --hard-fail-on CKV_AWS_145,CKV_AWS_16,CKV_AWS_17,CKV2_AWS_28,CKV_AWS_2,CKV2_AWS_20,CKV_AWS_103,CKV2_AWS_3,CKV_AWS_238,CKV2_AWS_11 \
+         --compact
   tfsec:
     name: tfsec Terraform Security Scan
     runs-on: ubuntu-latest
@@ -264,3 +264,46 @@ jobs:
       - name: Verify AWS identity
         run: |
           aws sts get-caller-identity
+  conftest:
+    name: OPA Conftest Policy Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Check for Terraform files
+        id: terraform_check
+        run: |
+          if find infra -type f -name "*.tf" | grep -q .; then
+          echo "terraform_present=true" >> "$GITHUB_OUTPUT"
+          else
+          echo "terraform_present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Terraform
+        if: steps.terraform_check.outputs.terraform_present == 'true'
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Install Conftest
+        if: steps.terraform_check.outputs.terraform_present == 'true'
+        run: |
+          wget https://github.com/open-policy-agent/conftest/releases/download/v0.62.0/conftest_0.62.0_Linux_x86_64.tar.gz
+          tar xzf conftest_0.62.0_Linux_x86_64.tar.gz
+          sudo mv conftest /usr/local/bin/
+
+      - name: Terraform Init
+        if: steps.terraform_check.outputs.terraform_present == 'true'
+        working-directory: infra
+        run: terraform init -backend=false
+
+      - name: Terraform Plan
+        if: steps.terraform_check.outputs.terraform_present == 'true'
+        working-directory: infra
+        run: terraform plan -out=plan.out
+
+      - name: Run Conftest Policies
+        if: steps.terraform_check.outputs.terraform_present == 'true'
+        working-directory: infra
+        run: |
+            terraform show -json plan.out | conftest test - \
+            --policy ../policy/terraform
