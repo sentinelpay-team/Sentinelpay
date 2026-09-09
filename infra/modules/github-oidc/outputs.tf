@@ -1,6 +1,6 @@
 output "role_arn" {
-  description = "GitHub Actions IAM role ARN"
-  value       = aws_iam_role.github.arn
+  description = "ARN of the GitHub Actions IAM role"
+  value       = aws_iam_role.github_actions.arn
 }
 
 output "oidc_provider_arn" {

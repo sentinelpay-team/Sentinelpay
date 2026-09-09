@@ -222,18 +222,13 @@ locals {
     ]
   })
 }
-
-
 module "github_oidc" {
   source = "../../modules/github-oidc"
 
-  project_name = var.project_name
-  environment  = var.environment
-
-  github_organization = var.github_organization
-  github_repository   = var.github_repository
-  github_branch       = var.github_branch
-
+  project_name           = var.project_name
+  environment            = var.environment
+  github_organization    = var.github_organization
+  github_repository      = var.github_repository
   deployment_policy_json = local.github_deployment_policy
 }
 
