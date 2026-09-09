@@ -2,12 +2,16 @@
 
 import json
 import logging
+import sys
 
 from datetime import (
     datetime,
     timezone,
 )
 
+logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+audit_logger = logging.getLogger("sentinelpay.audit")
+audit_logger.setLevel(logging.INFO)
 
 audit_logger = logging.getLogger(
     "sentinelpay.audit"
