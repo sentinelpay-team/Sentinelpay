@@ -1,0 +1,84 @@
+name: Reusable Container Security
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+
+  trivy-images:
+    name: Trivy Container Image Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Build payments-api image
+        run: |
+          docker build \
+            -t sentinelpay-payments:${{ github.sha }} \
+            Amdari-Project--02/services/payments-api
+
+      - name: Build kyc-api image
+        run: |
+          docker build \
+            -t sentinelpay-kyc:${{ github.sha }} \
+            Amdari-Project--02/services/kyc-api
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+            | gpg --dearmor \
+            | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
+            | sudo tee /etc/apt/sources.list.d/trivy.list
+
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+      - name: Scan payments-api image
+        id: trivy_payments
+        continue-on-error: true
+        run: |
+          trivy image sentinelpay-payments:${{ github.sha }} \
+            --severity HIGH,CRITICAL \
+            --format json \
+            --output trivy-payments-report.json \
+            --exit-code 1
+
+      - name: Scan kyc-api image
+        id: trivy_kyc
+        continue-on-error: true
+        run: |
+          trivy image sentinelpay-kyc:${{ github.sha }} \
+            --severity HIGH,CRITICAL \
+            --format json \
+            --output trivy-kyc-report.json \
+            --exit-code 1
+
+      - name: Upload Trivy image scan reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-scan-reports
+          path: |
+            trivy-payments-report.json
+            trivy-kyc-report.json
+
+      - name: Enforce Trivy image security gate
+        if: always()
+        run: |
+          if [ "${{ steps.trivy_payments.outcome }}" = "failure" ] || \
+             [ "${{ steps.trivy_kyc.outcome }}" = "failure" ]; then
+            echo "HIGH or CRITICAL vulnerabilities detected in one or more SentinelPay images."
+            exit 1
+          fi
+
+          echo "No HIGH or CRITICAL vulnerabilities detected."
