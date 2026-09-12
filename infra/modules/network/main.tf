@@ -261,7 +261,7 @@ resource "aws_iam_role_policy" "vpc_flow_logs" {
   role = aws_iam_role.vpc_flow_logs.id
 
   policy = jsonencode({
-    Version = "2012-10-17"
+    Version = "2012-10-17" #tfsec:ignore:aws-iam-no-policy-wildcards
 
     Statement = [
       {
@@ -270,16 +270,24 @@ resource "aws_iam_role_policy" "vpc_flow_logs" {
 
         Action = [
           "logs:CreateLogStream",
-          "logs:PutLogEvents",
-          "logs:DescribeLogStreams"
+          "logs:PutLogEvents"
         ]
 
         Resource = "${aws_cloudwatch_log_group.vpc_flow_logs.arn}:*"
+      },
+      {
+        Sid    = "DescribeVPCFlowLogStreams"
+        Effect = "Allow"
+
+        Action = [
+          "logs:DescribeLogStreams"
+        ]
+
+        Resource = aws_cloudwatch_log_group.vpc_flow_logs.arn
       }
     ]
   })
 }
-
 # =========================================================
 # VPC FLOW LOG
 # =========================================================

@@ -21,15 +21,15 @@ resource "aws_s3_account_public_access_block" "this" {
 # S3 ACCESS LOG BUCKET
 # =========================================================
 
-resource "aws_s3_bucket" "access_logs" {
+resource "aws_s3_bucket" "access_logs" { #tfsec:ignore:aws-s3-enable-bucket-logging
   # checkov:skip=CKV_AWS_144:Cross-region replication is intentionally not enabled in the development environment; production DR replication is managed separately
+  # checkov:skip=CKV_AWS_18:This bucket is the destination for S3 server access logs and must not log to itself
 
   bucket = "${var.project_name}-${var.environment}-s3-access-logs-${random_id.bucket_suffix.hex}"
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-s3-access-logs"
     Environment = var.environment
-    Purpose     = "S3AccessLogs"
   }
 }
 
@@ -293,19 +293,6 @@ resource "aws_vpc_security_group_ingress_rule" "app_to_redis" {
   ip_protocol = "tcp"
 
   description = "Allow Redis traffic from application security group"
-}
-
-# ---------------------------------------------------------
-# Redis outbound
-# ---------------------------------------------------------
-
-resource "aws_vpc_security_group_egress_rule" "redis" {
-  security_group_id = aws_security_group.redis.id
-
-  cidr_ipv4   = "0.0.0.0/0"
-  ip_protocol = "-1"
-
-  description = "Allow required outbound traffic from Redis security group"
 }
 
 # ---------------------------------------------------------

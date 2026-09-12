@@ -68,3 +68,7 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+variable "vpc_cidr" {
+  description = "CIDR block of the VPC used to restrict ECS outbound traffic"
+  type        = string
+}

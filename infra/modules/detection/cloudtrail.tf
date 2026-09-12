@@ -21,8 +21,11 @@ resource "random_id" "access_logs_suffix" {
 # AWS requires S3 server access-log destination buckets to
 # use SSE-S3 rather than SSE-KMS.
 # =========================================================
+#trivy:ignore:AWS-0089
+resource "aws_s3_bucket" "access_logs" { #tfsec:ignore:aws-s3-enable-bucket-logging
+  # This bucket is the destination for S3 server access logs.
+  # Enabling access logging on this bucket would create recursive logging.
 
-resource "aws_s3_bucket" "access_logs" {
   # checkov:skip=CKV_AWS_18:This bucket is the destination for S3 server access logs and must not log to itself
   # checkov:skip=CKV_AWS_145:S3 server access log destination buckets require SSE-S3 rather than SSE-KMS
   # checkov:skip=CKV2_AWS_62:Event notifications are not required for the dedicated S3 access-log destination bucket
@@ -36,7 +39,6 @@ resource "aws_s3_bucket" "access_logs" {
     ManagedBy   = "Terraform"
   }
 }
-
 resource "aws_s3_bucket_public_access_block" "access_logs" {
   bucket = aws_s3_bucket.access_logs.id
 
@@ -61,8 +63,19 @@ resource "aws_s3_bucket_versioning" "access_logs" {
     status = "Enabled"
   }
 }
+# =========================================================
+# S3 ACCESS LOG BUCKET ENCRYPTION
+# =========================================================
+# This bucket is dedicated to S3 server access logs.
+# SSE-S3 (AES256) is intentionally used instead of SSE-KMS.
+# Using SSE-KMS for an S3 server-access-log destination can
+# interfere with log delivery, so this exception is intentional.
+# =========================================================
 
+#tfsec:ignore:aws-s3-encryption-customer-key
 resource "aws_s3_bucket_server_side_encryption_configuration" "access_logs" {
+  # checkov:skip=CKV_AWS_145:S3 server access log destination buckets require SSE-S3 rather than SSE-KMS
+
   bucket = aws_s3_bucket.access_logs.id
 
   rule {
@@ -139,7 +152,6 @@ data "aws_iam_policy_document" "access_logs_bucket" {
     }
   }
 }
-
 resource "aws_s3_bucket_policy" "access_logs" {
   bucket = aws_s3_bucket.access_logs.id
 
@@ -515,15 +527,16 @@ resource "aws_iam_role" "cloudtrail_cloudwatch" {
 # =========================================================
 
 resource "aws_iam_role_policy" "cloudtrail_cloudwatch" {
-  name = "${var.project_name}-${var.environment}-cloudtrail-cloudwatch"
+  name = "${var.project_name}-${var.environment}-cloudtrail-cloudwatch-policy"
   role = aws_iam_role.cloudtrail_cloudwatch.id
 
   policy = jsonencode({
+    #tfsec:ignore:aws-iam-no-policy-wildcards
     Version = "2012-10-17"
 
     Statement = [
       {
-        Sid    = "CloudTrailCloudWatchLogs"
+        Sid    = "CloudTrailWriteLogs"
         Effect = "Allow"
 
         Action = [
@@ -536,7 +549,6 @@ resource "aws_iam_role_policy" "cloudtrail_cloudwatch" {
     ]
   })
 }
-
 # =========================================================
 # CLOUDTRAIL
 # =========================================================

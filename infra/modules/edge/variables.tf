@@ -9,7 +9,12 @@ variable "environment" {
 }
 
 variable "vpc_id" {
-  description = "VPC ID"
+  description = "ID of the VPC where the ALB security group is created"
+  type        = string
+}
+
+variable "vpc_cidr" {
+  description = "CIDR block of the VPC used to restrict ALB egress"
   type        = string
 }
 

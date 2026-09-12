@@ -341,6 +341,8 @@ resource "aws_lambda_permission" "secrets_manager" {
   principal = "secretsmanager.amazonaws.com"
 
   source_account = data.aws_caller_identity.current.account_id
+
+  source_arn = aws_secretsmanager_secret.database.arn
 }
 
 # ---------------------------------------------------------

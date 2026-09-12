@@ -6,12 +6,13 @@ locals {
   name_prefix = var.name_prefix != null ? var.name_prefix : "${var.project_name}-${var.environment}"
 }
 
+
 # =========================================================
 # ECS CLUSTER
 # =========================================================
 
 resource "aws_ecs_cluster" "this" {
-  name = "${var.project_name}-${var.environment}-cluster"
+  name = "${local.name_prefix}-cluster"
 
   setting {
     name  = "containerInsights"
@@ -21,32 +22,37 @@ resource "aws_ecs_cluster" "this" {
   tags = merge(
     var.tags,
     {
-      Name        = "${var.project_name}-${var.environment}-cluster"
+      Name        = "${local.name_prefix}-cluster"
       Environment = var.environment
     }
   )
 }
+
 
 # =========================================================
 # ECS SECURITY GROUP
 # =========================================================
 
 resource "aws_security_group" "ecs" {
-  name        = "${var.project_name}-${var.environment}-ecs-sg"
-  description = "Allow application traffic only from the ALB"
+  name        = "${local.name_prefix}-ecs-sg"
+  description = "Security group for Sentinelpay ECS Fargate tasks"
   vpc_id      = var.vpc_id
 
   tags = merge(
     var.tags,
     {
-      Name        = "${var.project_name}-${var.environment}-ecs-sg"
+      Name        = "${local.name_prefix}-ecs-sg"
       Environment = var.environment
     }
   )
 }
 
+
 # =========================================================
-# ALB -> ECS INGRESS RULE
+# ALB -> ECS INGRESS
+# =========================================================
+# Only the ALB security group can reach the ECS application
+# container port.
 # =========================================================
 
 resource "aws_vpc_security_group_ingress_rule" "alb_to_ecs" {
@@ -61,32 +67,126 @@ resource "aws_vpc_security_group_ingress_rule" "alb_to_ecs" {
   description = "Allow application traffic from ALB to ECS tasks"
 }
 
+
 # =========================================================
-# ECS EGRESS RULE
+# ECS EGRESS - HTTPS
+# =========================================================
+# Allows ECS tasks to communicate with interface VPC
+# endpoints such as:
+#
+# - ECR API
+# - ECR Docker
+# - Secrets Manager
+# - KMS
+# - CloudWatch Logs
+#
+# Restriction to the VPC CIDR prevents unrestricted
+# 0.0.0.0/0 egress.
 # =========================================================
 
-resource "aws_vpc_security_group_egress_rule" "ecs" {
+resource "aws_vpc_security_group_egress_rule" "ecs_https" {
   security_group_id = aws_security_group.ecs.id
 
-  cidr_ipv4   = "0.0.0.0/0"
-  ip_protocol = "-1"
+  cidr_ipv4 = var.vpc_cidr
 
-  description = "Allow ECS tasks outbound access to required AWS services"
+  from_port   = 443
+  to_port     = 443
+  ip_protocol = "tcp"
+
+  description = "Allow ECS HTTPS traffic to services within the VPC"
 }
+
+
+# =========================================================
+# ECS EGRESS - POSTGRESQL
+# =========================================================
+# Allows ECS applications to connect to the private
+# PostgreSQL RDS instance.
+# =========================================================
+
+resource "aws_vpc_security_group_egress_rule" "ecs_to_postgres" {
+  security_group_id = aws_security_group.ecs.id
+
+  cidr_ipv4 = var.vpc_cidr
+
+  from_port   = 5432
+  to_port     = 5432
+  ip_protocol = "tcp"
+
+  description = "Allow ECS tasks to connect to PostgreSQL within the VPC"
+}
+
+
+# =========================================================
+# ECS EGRESS - REDIS
+# =========================================================
+# Allows ECS applications to connect to private
+# ElastiCache Redis.
+# =========================================================
+
+resource "aws_vpc_security_group_egress_rule" "ecs_to_redis" {
+  security_group_id = aws_security_group.ecs.id
+
+  cidr_ipv4 = var.vpc_cidr
+
+  from_port   = 6379
+  to_port     = 6379
+  ip_protocol = "tcp"
+
+  description = "Allow ECS tasks to connect to Redis within the VPC"
+}
+
+
+# =========================================================
+# ECS EGRESS - DNS UDP
+# =========================================================
+
+resource "aws_vpc_security_group_egress_rule" "ecs_dns_udp" {
+  security_group_id = aws_security_group.ecs.id
+
+  cidr_ipv4 = var.vpc_cidr
+
+  from_port   = 53
+  to_port     = 53
+  ip_protocol = "udp"
+
+  description = "Allow ECS DNS queries over UDP within the VPC"
+}
+
+
+# =========================================================
+# ECS EGRESS - DNS TCP
+# =========================================================
+# DNS can fall back to TCP for large responses.
+# =========================================================
+
+resource "aws_vpc_security_group_egress_rule" "ecs_dns_tcp" {
+  security_group_id = aws_security_group.ecs.id
+
+  cidr_ipv4 = var.vpc_cidr
+
+  from_port   = 53
+  to_port     = 53
+  ip_protocol = "tcp"
+
+  description = "Allow ECS DNS queries over TCP within the VPC"
+}
+
 
 # =========================================================
 # ECS TASK EXECUTION ROLE
 # =========================================================
 
 resource "aws_iam_role" "execution" {
-  name        = "${var.project_name}-${var.environment}-ecs-execution-role"
-  description = "Execution role used by ECS Fargate tasks"
+  name        = "${local.name_prefix}-ecs-execution-role"
+  description = "Execution role used by Sentinelpay ECS Fargate tasks"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
 
     Statement = [
       {
+        Sid    = "ECSTaskExecutionAssumeRole"
         Effect = "Allow"
 
         Principal = {
@@ -101,11 +201,12 @@ resource "aws_iam_role" "execution" {
   tags = merge(
     var.tags,
     {
-      Name        = "${var.project_name}-${var.environment}-ecs-execution-role"
+      Name        = "${local.name_prefix}-ecs-execution-role"
       Environment = var.environment
     }
   )
 }
+
 
 # =========================================================
 # ECS TASK EXECUTION POLICY
@@ -115,6 +216,7 @@ resource "aws_iam_role_policy_attachment" "execution" {
   role       = aws_iam_role.execution.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
+
 
 # =========================================================
 # CLOUDWATCH LOG GROUP
@@ -135,12 +237,13 @@ resource "aws_cloudwatch_log_group" "this" {
   )
 }
 
+
 # =========================================================
 # ECS TASK DEFINITION
 # =========================================================
 
 resource "aws_ecs_task_definition" "this" {
-  family = "${var.project_name}-${var.environment}-placeholder"
+  family = "${local.name_prefix}-placeholder"
 
   requires_compatibilities = [
     "FARGATE"
@@ -182,18 +285,19 @@ resource "aws_ecs_task_definition" "this" {
   tags = merge(
     var.tags,
     {
-      Name        = "${var.project_name}-${var.environment}-task-definition"
+      Name        = "${local.name_prefix}-task-definition"
       Environment = var.environment
     }
   )
 }
+
 
 # =========================================================
 # ECS SERVICE
 # =========================================================
 
 resource "aws_ecs_service" "this" {
-  name = "${var.project_name}-${var.environment}-service"
+  name = "${local.name_prefix}-service"
 
   cluster         = aws_ecs_cluster.this.id
   task_definition = aws_ecs_task_definition.this.arn
@@ -208,6 +312,7 @@ resource "aws_ecs_service" "this" {
       aws_security_group.ecs.id
     ]
 
+    # ECS tasks remain private.
     assign_public_ip = false
   }
 
@@ -220,7 +325,7 @@ resource "aws_ecs_service" "this" {
   tags = merge(
     var.tags,
     {
-      Name        = "${var.project_name}-${var.environment}-service"
+      Name        = "${local.name_prefix}-service"
       Environment = var.environment
     }
   )

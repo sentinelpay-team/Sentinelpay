@@ -4,14 +4,14 @@
 
 resource "aws_security_group" "alb" {
   name        = "${var.project_name}-${var.environment}-alb-sg"
-  description = "Security group for the public application load balancer"
+  description = "Security group for Sentinelpay Application Load Balancer"
   vpc_id      = var.vpc_id
 
   tags = {
-    Name = "${var.project_name}-${var.environment}-alb-sg"
+    Name        = "${var.project_name}-${var.environment}-alb-sg"
+    Environment = var.environment
   }
 }
-
 # ---------------------------------------------------------
 # HTTPS ingress
 # ---------------------------------------------------------
@@ -48,24 +48,31 @@ resource "aws_vpc_security_group_ingress_rule" "http_redirect" {
 # ALB outbound traffic
 # ---------------------------------------------------------
 
-resource "aws_vpc_security_group_egress_rule" "all" {
+resource "aws_vpc_security_group_egress_rule" "alb_to_ecs" {
   security_group_id = aws_security_group.alb.id
 
-  cidr_ipv4   = "0.0.0.0/0"
-  ip_protocol = "-1"
+  cidr_ipv4 = var.vpc_cidr
 
-  description = "Allow outbound traffic from the ALB to application targets"
+  from_port   = var.container_port
+  to_port     = var.container_port
+  ip_protocol = "tcp"
+
+  description = "Allow ALB outbound traffic to ECS targets within the VPC"
 }
-
 # ---------------------------------------------------------
 # Application Load Balancer
 # ---------------------------------------------------------
 
 resource "aws_lb" "this" {
+  # tfsec:ignore:aws-elb-alb-not-public
+  # The ALB is intentionally internet-facing and deployed in public subnets.
+  # Backend ECS services remain in private subnets, with the ALB acting as
+  # the controlled public ingress point.
+
   # checkov:skip=CKV2_AWS_76:ALB is associated with a WAFv2 WebACL containing AWSManagedRulesKnownBadInputsRuleSet for Log4j protection
 
   name               = "${var.project_name}-${var.environment}-alb"
-  internal           = false
+  internal           = true
   load_balancer_type = "application"
 
   security_groups = [
@@ -85,10 +92,11 @@ resource "aws_lb" "this" {
   }
 
   tags = {
-    Name = "${var.project_name}-${var.environment}-alb"
+    Name        = "${var.project_name}-${var.environment}-alb"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
   }
 }
-
 # ---------------------------------------------------------
 # ALB Target Group
 # ---------------------------------------------------------

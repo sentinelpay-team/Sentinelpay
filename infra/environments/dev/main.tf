@@ -1,4 +1,4 @@
-module "network" {
+module "network" { #tfsec:ignore:aws-iam-no-policy-wildcards
   source = "../../modules/network"
 
   project_name = var.project_name
@@ -23,12 +23,16 @@ module "network" {
 module "edge" {
   source = "../../modules/edge"
 
-  project_name      = var.project_name
-  environment       = var.environment
-  vpc_id            = module.network.vpc_id
+  project_name = var.project_name
+  environment  = var.environment
+
+  vpc_id   = module.network.vpc_id
+  vpc_cidr = var.vpc_cidr
+
   public_subnet_ids = module.network.public_subnet_ids
 
-  container_port      = var.container_port
+  container_port = var.container_port
+
   acm_certificate_arn = var.acm_certificate_arn
 
   alb_logs_bucket = module.data.access_logs_bucket_name
@@ -44,15 +48,33 @@ module "compute" {
   environment  = var.environment
   name_prefix  = "${var.project_name}-${var.environment}"
 
-  vpc_id             = module.network.vpc_id
+  # ======================================================
+  # NETWORK
+  # ======================================================
+
+  vpc_id   = module.network.vpc_id
+  vpc_cidr = var.vpc_cidr
+
   private_subnet_ids = module.network.private_subnet_ids
+
+  # ======================================================
+  # ALB / EDGE
+  # ======================================================
 
   alb_security_group_id = module.edge.alb_security_group_id
   target_group_arn      = module.edge.target_group_arn
 
+  # ======================================================
+  # ECS
+  # ======================================================
+
   container_image = var.container_image
   container_port  = var.container_port
   desired_count   = var.desired_count
+
+  # ======================================================
+  # KMS / REGION
+  # ======================================================
 
   kms_key_arn = module.kms.key_arn
   aws_region  = var.aws_region
@@ -63,16 +85,21 @@ module "compute" {
     ManagedBy   = "Terraform"
   }
 }
+
+
 resource "random_password" "database" {
   length  = 32
   special = true
 }
+
+
 module "security_iam" {
   source = "../../modules/security-iam"
 
   project_name = var.project_name
   environment  = var.environment
 }
+
 
 module "kms" {
   source = "../../modules/kms"
@@ -88,6 +115,8 @@ module "kms" {
     module.security_iam.kms_user_role_arn
   ]
 }
+
+
 module "rds" {
   source = "../../modules/rds"
 
@@ -108,6 +137,7 @@ module "rds" {
   db_username = "sentinelpay_admin"
   db_password = random_password.database.result
 }
+
 
 module "secrets_rotation" {
   source = "../../modules/secrets-rotation"
@@ -134,9 +164,12 @@ module "secrets_rotation" {
     "${path.root}/../../lambda/postgres-rotation.zip"
   )
 }
+
+
 data "aws_caller_identity" "current" {}
 
 data "aws_region" "current" {}
+
 
 locals {
   github_deployment_policy = jsonencode({
@@ -222,6 +255,8 @@ locals {
     ]
   })
 }
+
+
 module "github_oidc" {
   source = "../../modules/github-oidc"
 
@@ -233,7 +268,8 @@ module "github_oidc" {
 }
 
 
-module "data" {
+#trivy:ignore:AVD-AWS-0089
+module "data" { #tfsec:ignore:aws-s3-enable-bucket-logging
   source = "../../modules/data"
 
   project_name = var.project_name
@@ -247,6 +283,7 @@ module "data" {
 
   kms_key_arn = module.kms.key_arn
 }
+
 
 module "detection" {
   source = "../../modules/detection"

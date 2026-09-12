@@ -1,23 +1,37 @@
+# =========================================================
+# AWS
+# =========================================================
+
 variable "aws_region" {
-
   description = "AWS deployment region"
-
-  type = string
-
-  default = "eu-west-1"
+  type        = string
+  default     = "eu-west-1"
 }
+
+
+# =========================================================
+# PROJECT
+# =========================================================
 
 variable "project_name" {
-
   description = "Project name"
-
-  type = string
-
-  default = "sentinelpay"
+  type        = string
+  default     = "sentinelpay"
 }
 
+variable "environment" {
+  description = "Deployment environment"
+  type        = string
+  default     = "dev"
+}
+
+
+# =========================================================
+# NETWORK
+# =========================================================
+
 variable "vpc_cidr" {
-  description = "CIDR block for the VPC"
+  description = "CIDR block of the VPC used to restrict ECS outbound traffic"
   type        = string
 }
 
@@ -35,14 +49,11 @@ variable "availability_zones" {
   description = "Availability zones for the VPC"
   type        = list(string)
 }
-variable "environment" {
 
-  description = "Environment"
 
-  type = string
-
-  default = "dev"
-}
+# =========================================================
+# GITHUB OIDC
+# =========================================================
 
 variable "github_organization" {
   description = "GitHub organization or username"
@@ -58,25 +69,24 @@ variable "github_branch" {
   description = "GitHub branch allowed to assume the AWS role"
   type        = string
   default     = "main"
-
 }
+
+
+# =========================================================
+# ALB / TLS
+# =========================================================
 
 variable "acm_certificate_arn" {
   description = "ARN of the ACM certificate used by the ALB HTTPS listener"
   type        = string
   default     = null
 }
-variable "name_prefix" {
-  description = "Prefix used for naming compute resources"
-  type        = string
-  default     = null
-}
 
-variable "tags" {
-  description = "Common tags to apply to compute resources"
-  type        = map(string)
-  default     = {}
-}
+
+# =========================================================
+# ECS / COMPUTE
+# =========================================================
+
 variable "container_image" {
   description = "Docker image used by the ECS task"
   type        = string
@@ -93,4 +103,21 @@ variable "desired_count" {
   description = "Desired number of ECS tasks"
   type        = number
   default     = 1
+}
+
+variable "name_prefix" {
+  description = "Prefix used for naming compute resources"
+  type        = string
+  default     = null
+}
+
+
+# =========================================================
+# COMMON TAGS
+# =========================================================
+
+variable "tags" {
+  description = "Common tags to apply to resources"
+  type        = map(string)
+  default     = {}
 }

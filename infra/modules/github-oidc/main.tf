@@ -9,6 +9,7 @@ resource "aws_iam_openid_connect_provider" "github" {
 }
 
 data "aws_iam_policy_document" "github_actions_assume_role" {
+
   statement {
     effect = "Allow"
 
@@ -34,12 +35,11 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
     }
 
     condition {
-  test     = "StringLike"
-  variable = "token.actions.githubusercontent.com:sub"
+      test     = "StringLike"
+      variable = "token.actions.githubusercontent.com:sub"
 
-  values = [
-    "repo:${var.github_organization}@*/${var.github_repository}@*:*",
-    "repo:${var.github_organization}/${var.github_repository}:*"
+      values = [
+        "repo:${var.github_organization}@321830913/${var.github_repository}@1348603997:*"
       ]
     }
   }
