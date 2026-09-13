@@ -1,0 +1,200 @@
+name: Reusable Container Security
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+
+  trivy-images:
+    name: Trivy Container Image Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build payments-api image
+        run: |
+          docker build \
+            -t sentinelpay-payments:${{ github.sha }} \
+            Amdari-Project--02/services/payments-api
+
+      - name: Build kyc-api image
+        run: |
+          docker build \
+            -t sentinelpay-kyc:${{ github.sha }} \
+            Amdari-Project--02/services/kyc-api
+      - name: Install Syft
+        run: |
+          curl -sSfL https://get.anchore.io/syft | sh -s -- -b /usr/local/bin
+          syft version
+
+      - name: Generate payments-api SBOM
+        run: |
+          syft sentinelpay-payments:${{ github.sha }} \
+            -o cyclonedx-json=payments-sbom.cdx.json
+
+      - name: Generate kyc-api SBOM
+        run: |
+          syft sentinelpay-kyc:${{ github.sha }} \
+            -o cyclonedx-json=kyc-sbom.cdx.json
+
+      - name: Upload CycloneDX SBOMs
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinelpay-sboms
+          path: |
+            payments-sbom.cdx.json
+            kyc-sbom.cdx.json
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+            | gpg --dearmor \
+            | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
+            | sudo tee /etc/apt/sources.list.d/trivy.list
+
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+      - name: Scan payments-api image
+        id: trivy_payments
+        continue-on-error: true
+        run: |
+          trivy image sentinelpay-payments:${{ github.sha }} \
+            --severity CRITICAL \
+            --format json \
+            --output trivy-payments-report.json \
+            --exit-code 1
+
+      - name: Scan kyc-api image
+        id: trivy_kyc
+        continue-on-error: true
+        run: |
+          trivy image sentinelpay-kyc:${{ github.sha }} \
+            --severity CRITICAL \
+            --format json \
+            --output trivy-kyc-report.json \
+            --exit-code 1
+
+      - name: Upload Trivy image scan reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-scan-reports
+          path: |
+            trivy-payments-report.json
+            trivy-kyc-report.json
+
+      - name: Enforce Trivy image security gate
+        if: always()
+        run: |
+          if [ "${{ steps.trivy_payments.outcome }}" = "failure" ] || \
+             [ "${{ steps.trivy_kyc.outcome }}" = "failure" ]; then
+            echo "Trivy scan failed or CRITICAL vulnerabilities detected in one or more SentinelPay images."
+            exit 1
+          fi
+
+          echo "No CRITICAL vulnerabilities detected."
+      - name: Tag images for Amazon ECR
+        run: |
+          docker tag sentinelpay-payments:${{ github.sha }} \
+            105045466108.dkr.ecr.eu-west-1.amazonaws.com/sentinelpay-dev-payments-api:${{ github.sha }}
+
+          docker tag sentinelpay-kyc:${{ github.sha }} \
+            105045466108.dkr.ecr.eu-west-1.amazonaws.com/sentinelpay-dev-kyc-api:${{ github.sha }}
+
+      - name: Push images to Amazon ECR
+        run: |
+          docker push \
+            105045466108.dkr.ecr.eu-west-1.amazonaws.com/sentinelpay-dev-payments-api:${{ github.sha }}
+
+          docker push \
+            105045466108.dkr.ecr.eu-west-1.amazonaws.com/sentinelpay-dev-kyc-api:${{ github.sha }}
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.0
+
+      - name: Check Cosign version
+        run: cosign version
+      - name: Resolve ECR image digests
+        run: |
+          PAYMENTS_DIGEST=$(aws ecr describe-images \
+            --repository-name sentinelpay-dev-payments-api \
+            --image-ids imageTag=${{ github.sha }} \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)
+
+          KYC_DIGEST=$(aws ecr describe-images \
+            --repository-name sentinelpay-dev-kyc-api \
+            --image-ids imageTag=${{ github.sha }} \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)
+
+          echo "PAYMENTS_IMAGE=105045466108.dkr.ecr.eu-west-1.amazonaws.com/sentinelpay-dev-payments-api@$PAYMENTS_DIGEST" >> "$GITHUB_ENV"
+          echo "KYC_IMAGE=105045466108.dkr.ecr.eu-west-1.amazonaws.com/sentinelpay-dev-kyc-api@$KYC_DIGEST" >> "$GITHUB_ENV"
+      - name: Keyless sign SentinelPay images
+        run: |
+          cosign sign --yes "$PAYMENTS_IMAGE"
+          cosign sign --yes "$KYC_IMAGE"
+      - name: Attest CycloneDX SBOMs
+        run: |
+          cosign attest --yes \
+            --predicate payments-sbom.cdx.json \
+            --type cyclonedx \
+            "$PAYMENTS_IMAGE"
+
+          cosign attest --yes \
+            --predicate kyc-sbom.cdx.json \
+            --type cyclonedx \
+            "$KYC_IMAGE"
+      - name: Verify Cosign signatures and SBOM attestations
+        run: |
+          cosign verify "$PAYMENTS_IMAGE" \
+            --certificate-identity-regexp ".*" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            > payments-signature-verification.json
+
+          cosign verify "$KYC_IMAGE" \
+            --certificate-identity-regexp ".*" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            > kyc-signature-verification.json
+
+          cosign verify-attestation "$PAYMENTS_IMAGE" \
+            --type cyclonedx \
+            --certificate-identity-regexp ".*" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            > payments-sbom-verification.json
+
+          cosign verify-attestation "$KYC_IMAGE" \
+            --type cyclonedx \
+            --certificate-identity-regexp ".*" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            > kyc-sbom-verification.json
+      - name: Upload Cosign verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cosign-verification-evidence
+          path: |
+            payments-signature-verification.json
+            kyc-signature-verification.json
+            payments-sbom-verification.json
+            kyc-sbom-verification.json

@@ -1,0 +1,153 @@
+name: Reusable Security Scans
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+
+  gitleaks:
+    name: Gitleaks Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout full Git history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install Gitleaks
+        run: |
+          GITLEAKS_VERSION="8.28.0"
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz
+          sudo mv gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Run SentinelPay Gitleaks scan
+        run: |
+          gitleaks git . \
+            --config .gitleaks.toml \
+            --baseline-path gitleaks-baseline.json \
+            --redact \
+            --verbose \
+            --report-format json \
+            --report-path gitleaks-report.json
+      - name: Upload Gitleaks report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
+
+  bandit:
+    name: Bandit Python Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Bandit
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit
+
+      - name: Scan SentinelPay Python services
+        run: |
+          bandit -r Amdari-Project--02/services/payments-api/app \
+            Amdari-Project--02/services/kyc-api/app \
+            -lll -ii \
+            -f json \
+            -o bandit-report.json
+      - name: Upload Bandit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
+  semgrep:
+    name: Semgrep SAST Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Semgrep
+        run: |
+          python -m pip install --upgrade pip
+          pip install semgrep
+
+      - name: Run Semgrep security scan
+        run: |
+          semgrep scan \
+            --config p/python \
+            --config p/security-audit \
+            --severity ERROR \
+            --error \
+            --json \
+            --output semgrep-report.json \
+            Amdari-Project--02/services
+      - name: Upload Semgrep report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-report
+          path: semgrep-report.json
+
+  trivy-dependencies:
+    name: Trivy Dependency Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+            | gpg --dearmor \
+            | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
+            | sudo tee /etc/apt/sources.list.d/trivy.list
+
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+      - name: Scan SentinelPay dependencies
+        run: |
+          trivy fs Amdari-Project--02 \
+            --scanners vuln \
+            --severity CRITICAL \
+            --format json \
+            --output trivy-dependencies-report.json \
+            --exit-code 1
+      - name: Upload Trivy dependency report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-dependencies-report
+          path: trivy-dependencies-report.json
