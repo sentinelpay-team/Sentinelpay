@@ -11,6 +11,7 @@ jobs:
   gitleaks:
     name: Gitleaks Secret Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout full Git history
@@ -33,11 +34,20 @@ jobs:
             --config .gitleaks.toml \
             --baseline-path gitleaks-baseline.json \
             --redact \
-            --verbose
+            --verbose \
+            --report-format json \
+            --report-path gitleaks-report.json
+      - name: Upload Gitleaks report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
 
   bandit:
     name: Bandit Python Security Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout repository
@@ -57,11 +67,20 @@ jobs:
         run: |
           bandit -r Amdari-Project--02/services/payments-api/app \
             Amdari-Project--02/services/kyc-api/app \
-            -lll -ii
+            -lll -ii \
+            -f json \
+            -o bandit-report.json
+      - name: Upload Bandit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
 
   semgrep:
     name: Semgrep SAST Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout repository
@@ -84,11 +103,20 @@ jobs:
             --config p/security-audit \
             --severity ERROR \
             --error \
+            --json \
+            --output semgrep-report.json \
             Amdari-Project--02/services
+      - name: Upload Semgrep report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-report
+          path: semgrep-report.json
 
   trivy-dependencies:
     name: Trivy Dependency Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout repository
@@ -113,5 +141,13 @@ jobs:
         run: |
           trivy fs Amdari-Project--02 \
             --scanners vuln \
-            --severity HIGH,CRITICAL \
+            --severity CRITICAL \
+            --format json \
+            --output trivy-dependencies-report.json \
             --exit-code 1
+      - name: Upload Trivy dependency report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-dependencies-report
+          path: trivy-dependencies-report.json

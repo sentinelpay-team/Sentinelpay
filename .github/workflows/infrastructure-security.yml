@@ -12,6 +12,7 @@ jobs:
   checkov:
     name: Checkov Terraform Security Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout repository
@@ -34,11 +35,21 @@ jobs:
             --framework terraform \
             --soft-fail \
             --hard-fail-on CKV_AWS_145,CKV_AWS_16,CKV_AWS_17,CKV2_AWS_28,CKV_AWS_2,CKV2_AWS_20,CKV_AWS_103,CKV2_AWS_3,CKV_AWS_238,CKV2_AWS_11 \
-            --compact
+            --compact \
+            --output json \
+            --output-file-path checkov-report.json
+
+      - name: Upload Checkov report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkov-report
+          path: checkov-report.json
 
   tfsec:
     name: tfsec Terraform Security Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout repository
@@ -60,11 +71,21 @@ jobs:
         run: |
           tfsec infra \
             --minimum-severity HIGH \
+            --format json \
+            --out tfsec-report.json \
             --no-colour
+
+      - name: Upload tfsec report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfsec-report
+          path: tfsec-report.json
 
   aws-oidc-test:
     name: Test AWS OIDC Authentication
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     permissions:
       id-token: write
@@ -82,4 +103,12 @@ jobs:
 
       - name: Verify AWS identity
         run: |
-          aws sts get-caller-identity
+          aws sts get-caller-identity > aws-oidc-identity.json
+          cat aws-oidc-identity.json
+
+      - name: Upload AWS OIDC identity
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aws-oidc-identity
+          path: aws-oidc-identity.json

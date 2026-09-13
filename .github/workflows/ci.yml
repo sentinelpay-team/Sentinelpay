@@ -17,13 +17,22 @@ jobs:
 
   test-workflow:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
       - name: Confirm workflow is running
-        run: echo "SentinelPay GitHub Actions pipeline is working"
+        run: |
+          echo "SentinelPay GitHub Actions pipeline is working" | tee workflow-smoke-test.txt
+
+      - name: Upload workflow smoke-test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workflow-smoke-test
+          path: workflow-smoke-test.txt
 
   security-scans:
     name: Application Security Scans
