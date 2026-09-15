@@ -192,6 +192,8 @@ locals {
         Effect = "Allow"
 
         Action = [
+          "ecr:DescribeImages",
+          "ecr:DescribeRepositories",
           "ecr:BatchCheckLayerAvailability",
           "ecr:GetDownloadUrlForLayer",
           "ecr:BatchGetImage",
