@@ -123,12 +123,27 @@ jobs:
             105045466108.dkr.ecr.eu-west-1.amazonaws.com/sentinelpay-dev-kyc-api:${{ github.sha }}
 
       - name: Push images to Amazon ECR
+        shell: bash
         run: |
-          docker push \
-            105045466108.dkr.ecr.eu-west-1.amazonaws.com/sentinelpay-dev-payments-api:${{ github.sha }}
+          if aws ecr describe-images \
+            --region eu-west-1 \
+            --repository-name sentinelpay-dev-payments-api \
+            --image-ids imageTag=${{ github.sha }} > /dev/null 2>&1; then
+            echo "Payments image already exists in ECR. Skipping push."
+          else
+            docker push \
+              105045466108.dkr.ecr.eu-west-1.amazonaws.com/sentinelpay-dev-payments-api:${{ github.sha }}
+          fi
 
-          docker push \
-            105045466108.dkr.ecr.eu-west-1.amazonaws.com/sentinelpay-dev-kyc-api:${{ github.sha }}
+          if aws ecr describe-images \
+            --region eu-west-1 \
+            --repository-name sentinelpay-dev-kyc-api \
+            --image-ids imageTag=${{ github.sha }} > /dev/null 2>&1; then
+            echo "KYC image already exists in ECR. Skipping push."
+          else
+            docker push \
+              105045466108.dkr.ecr.eu-west-1.amazonaws.com/sentinelpay-dev-kyc-api:${{ github.sha }}
+          fi
       - name: Install Cosign
         uses: sigstore/cosign-installer@v4.1.0
 
