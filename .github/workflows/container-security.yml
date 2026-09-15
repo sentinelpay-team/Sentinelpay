@@ -124,26 +124,70 @@ jobs:
 
       - name: Push images to Amazon ECR
         shell: bash
+        env:
+          AWS_REGION: eu-west-1
+          ECR_REGISTRY: 105045466108.dkr.ecr.eu-west-1.amazonaws.com
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          if aws ecr describe-images \
-            --region eu-west-1 \
-            --repository-name sentinelpay-dev-payments-api \
-            --image-ids imageTag=${{ github.sha }} > /dev/null 2>&1; then
-            echo "Payments image already exists in ECR. Skipping push."
-          else
-            docker push \
-              105045466108.dkr.ecr.eu-west-1.amazonaws.com/sentinelpay-dev-payments-api:${{ github.sha }}
-          fi
+          set -euo pipefail
+
+          PAYMENTS_REPO="sentinelpay-dev-payments-api"
+          KYC_REPO="sentinelpay-dev-kyc-api"
+
+          PAYMENTS_IMAGE="${ECR_REGISTRY}/${PAYMENTS_REPO}:${IMAGE_TAG}"
+          KYC_IMAGE="${ECR_REGISTRY}/${KYC_REPO}:${IMAGE_TAG}"
+
+          echo "=========================================="
+          echo "Checking SentinelPay images in Amazon ECR"
+          echo "Image tag: ${IMAGE_TAG}"
+          echo "Region: ${AWS_REGION}"
+          echo "=========================================="
+
+          echo "Checking ${PAYMENTS_REPO}:${IMAGE_TAG}..."
 
           if aws ecr describe-images \
-            --region eu-west-1 \
-            --repository-name sentinelpay-dev-kyc-api \
-            --image-ids imageTag=${{ github.sha }} > /dev/null 2>&1; then
-            echo "KYC image already exists in ECR. Skipping push."
+            --region "${AWS_REGION}" \
+            --repository-name "${PAYMENTS_REPO}" \
+            --image-ids imageTag="${IMAGE_TAG}" \
+            > /dev/null 2>&1; then
+
+            echo "Payments image already exists in ECR."
+            echo "Skipping push because ECR tags are immutable."
+
           else
-            docker push \
-              105045466108.dkr.ecr.eu-west-1.amazonaws.com/sentinelpay-dev-kyc-api:${{ github.sha }}
+
+            echo "Payments image not found in ECR."
+            echo "Pushing ${PAYMENTS_IMAGE}..."
+
+            docker push "${PAYMENTS_IMAGE}"
+
+            echo "Payments image pushed successfully."
           fi
+
+          echo "Checking ${KYC_REPO}:${IMAGE_TAG}..."
+
+          if aws ecr describe-images \
+            --region "${AWS_REGION}" \
+            --repository-name "${KYC_REPO}" \
+            --image-ids imageTag="${IMAGE_TAG}" \
+            > /dev/null 2>&1; then
+
+            echo "KYC image already exists in ECR."
+            echo "Skipping push because ECR tags are immutable."
+
+          else
+
+            echo "KYC image not found in ECR."
+            echo "Pushing ${KYC_IMAGE}..."
+
+            docker push "${KYC_IMAGE}"
+
+            echo "KYC image pushed successfully."
+          fi
+
+          echo "=========================================="
+          echo "ECR image push/check completed successfully."
+          echo "=========================================="
       - name: Install Cosign
         uses: sigstore/cosign-installer@v4.1.0
 
