@@ -41,7 +41,7 @@ jobs:
       - name: Terraform Init
         if: steps.terraform_check.outputs.terraform_present == 'true'
         working-directory: infra/environments/dev
-        run: terraform init -backend=false
+        run: terraform init
 
       - name: Terraform Validate
         if: steps.terraform_check.outputs.terraform_present == 'true'
