@@ -20,3 +20,28 @@ crash.*.log
 # Lambda build artifacts
 infra/lambda/build/
 infra/lambda/*.zip
+.secrets/
+
+**/.secrets/
+
+# Security scan outputs
+**/checkov-results.txt
+**/tfsec-*.txt
+**/conftest-plan.json
+
+# Terraform plan and debug outputs
+**/*-plan.txt
+**/dev-plan.txt
+**/final-plan.txt
+**/final-v*-plan.txt
+**/recovery-plan.txt
+**/recovery-v*-plan.txt
+**/tfplan.txt
+**/fresh-plan.json
+**/redis-fix-plan.json
+
+# Local backup files
+**/*.alb-backup
+
+# Accidental command-output files
+**/*Select-String

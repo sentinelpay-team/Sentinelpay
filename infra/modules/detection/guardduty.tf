@@ -1,6 +1,5 @@
 resource "aws_guardduty_detector" "this" {
-  # checkov:skip=CKV2_AWS_3:Development account is not configured as an AWS Organizations GuardDuty delegated administrator; GuardDuty is enabled directly in this account and region
-
+  # checkov:skip=CKV2_AWS_3:GuardDuty is enabled directly for this development account; AWS Organizations delegated administration is outside the scope of this standalone environment.
   enable                       = true
   finding_publishing_frequency = "FIFTEEN_MINUTES"
 
@@ -11,20 +10,12 @@ resource "aws_guardduty_detector" "this" {
   }
 }
 
-# ---------------------------------------------------------
-# S3 Protection
-# ---------------------------------------------------------
-
 resource "aws_guardduty_detector_feature" "s3" {
   detector_id = aws_guardduty_detector.this.id
 
   name   = "S3_DATA_EVENTS"
   status = "ENABLED"
 }
-
-# ---------------------------------------------------------
-# EBS Malware Protection
-# ---------------------------------------------------------
 
 resource "aws_guardduty_detector_feature" "ebs_malware" {
   detector_id = aws_guardduty_detector.this.id
@@ -33,10 +24,6 @@ resource "aws_guardduty_detector_feature" "ebs_malware" {
   status = "ENABLED"
 }
 
-# ---------------------------------------------------------
-# RDS Protection
-# ---------------------------------------------------------
-
 resource "aws_guardduty_detector_feature" "rds" {
   detector_id = aws_guardduty_detector.this.id
 
@@ -44,20 +31,12 @@ resource "aws_guardduty_detector_feature" "rds" {
   status = "ENABLED"
 }
 
-# ---------------------------------------------------------
-# Lambda Protection
-# ---------------------------------------------------------
-
 resource "aws_guardduty_detector_feature" "lambda" {
   detector_id = aws_guardduty_detector.this.id
 
   name   = "LAMBDA_NETWORK_LOGS"
   status = "ENABLED"
 }
-
-# ---------------------------------------------------------
-# EKS Audit Log Protection
-# ---------------------------------------------------------
 
 resource "aws_guardduty_detector_feature" "eks" {
   count = var.enable_eks_guardduty ? 1 : 0

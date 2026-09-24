@@ -1,14 +1,10 @@
-# ---------------------------------------------------------
-# Random suffix for globally unique bucket names
-# ---------------------------------------------------------
-
 resource "random_id" "bucket_suffix" {
   byte_length = 4
 }
 
-# ---------------------------------------------------------
-# Account-wide S3 Public Access Block
-# ---------------------------------------------------------
+data "aws_caller_identity" "current" {}
+
+data "aws_region" "current" {}
 
 resource "aws_s3_account_public_access_block" "this" {
   block_public_acls       = true
@@ -16,26 +12,19 @@ resource "aws_s3_account_public_access_block" "this" {
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
-
-# =========================================================
-# S3 ACCESS LOG BUCKET
-# =========================================================
-
-resource "aws_s3_bucket" "access_logs" { #tfsec:ignore:aws-s3-enable-bucket-logging
-  # checkov:skip=CKV_AWS_144:Cross-region replication is intentionally not enabled in the development environment; production DR replication is managed separately
-  # checkov:skip=CKV_AWS_18:This bucket is the destination for S3 server access logs and must not log to itself
-
+#tfsec:ignore:aws-s3-enable-bucket-logging
+resource "aws_s3_bucket" "access_logs" {
+  # checkov:skip=CKV_AWS_144:Cross-region replication is not enabled for the development ALB access-log destination; regional durability is accepted for this non-production environment.
+  # checkov:skip=CKV_AWS_145:AWS service access-log destination intentionally uses SSE-S3 for log-delivery compatibility.
+  # checkov:skip=CKV_AWS_145:ALB access log destination intentionally uses SSE-S3 for AWS log delivery compatibility.
   bucket = "${var.project_name}-${var.environment}-s3-access-logs-${random_id.bucket_suffix.hex}"
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-s3-access-logs"
     Environment = var.environment
+    ManagedBy   = "Terraform"
   }
 }
-
-# ---------------------------------------------------------
-# Public Access Block
-# ---------------------------------------------------------
 
 resource "aws_s3_bucket_public_access_block" "access_logs" {
   bucket = aws_s3_bucket.access_logs.id
@@ -46,10 +35,13 @@ resource "aws_s3_bucket_public_access_block" "access_logs" {
   restrict_public_buckets = true
 }
 
-# ---------------------------------------------------------
-# Access Log Bucket Versioning
-# CKV_AWS_21
-# ---------------------------------------------------------
+resource "aws_s3_bucket_ownership_controls" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
 
 resource "aws_s3_bucket_versioning" "access_logs" {
   bucket = aws_s3_bucket.access_logs.id
@@ -58,31 +50,136 @@ resource "aws_s3_bucket_versioning" "access_logs" {
     status = "Enabled"
   }
 }
-
-# ---------------------------------------------------------
-# Access Log Bucket KMS Encryption
-# CKV_AWS_145
-# ---------------------------------------------------------
-
+# checkov:skip=CKV_AWS_145:AWS ALB/S3 server access log delivery requires SSE-S3 for this destination bucket.
+# tfsec:ignore:aws-s3-encryption-customer-key
 resource "aws_s3_bucket_server_side_encryption_configuration" "access_logs" {
   bucket = aws_s3_bucket.access_logs.id
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm     = "aws:kms"
-      kms_master_key_id = var.kms_key_arn
+      sse_algorithm = "AES256"
     }
-
-    bucket_key_enabled = true
   }
 }
 
-# ---------------------------------------------------------
-# Access Log Bucket Lifecycle
-#
-# CKV2_AWS_61
-# CKV_AWS_300
-# ---------------------------------------------------------
+data "aws_iam_policy_document" "access_logs" {
+  statement {
+    sid    = "AllowALBLogDeliveryWrite"
+    effect = "Allow"
+
+    principals {
+      type = "Service"
+
+      identifiers = [
+        "logdelivery.elasticloadbalancing.amazonaws.com"
+      ]
+    }
+
+    actions = [
+      "s3:PutObject"
+    ]
+
+    resources = [
+      "${aws_s3_bucket.access_logs.arn}/alb/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+    ]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+
+      values = [
+        data.aws_caller_identity.current.account_id
+      ]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+
+      values = [
+        "arn:aws:elasticloadbalancing:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:loadbalancer/*"
+      ]
+    }
+  }
+
+  statement {
+    sid    = "AllowS3ServerAccessLogDelivery"
+    effect = "Allow"
+
+    principals {
+      type = "Service"
+
+      identifiers = [
+        "logging.s3.amazonaws.com"
+      ]
+    }
+
+    actions = [
+      "s3:PutObject"
+    ]
+
+    resources = [
+      "${aws_s3_bucket.access_logs.arn}/kyc/*"
+    ]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+
+      values = [
+        data.aws_caller_identity.current.account_id
+      ]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+
+      values = [
+        aws_s3_bucket.kyc.arn
+      ]
+    }
+  }
+
+  statement {
+    sid    = "DenyInsecureTransport"
+    effect = "Deny"
+
+    principals {
+      type        = "AWS"
+      identifiers = ["*"]
+    }
+
+    actions = [
+      "s3:*"
+    ]
+
+    resources = [
+      aws_s3_bucket.access_logs.arn,
+      "${aws_s3_bucket.access_logs.arn}/*"
+    ]
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+
+      values = [
+        "false"
+      ]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+  policy = data.aws_iam_policy_document.access_logs.json
+
+  depends_on = [
+    aws_s3_bucket_public_access_block.access_logs,
+    aws_s3_bucket_ownership_controls.access_logs,
+    aws_s3_bucket_server_side_encryption_configuration.access_logs
+  ]
+}
 
 resource "aws_s3_bucket_lifecycle_configuration" "access_logs" {
   bucket = aws_s3_bucket.access_logs.id
@@ -97,8 +194,6 @@ resource "aws_s3_bucket_lifecycle_configuration" "access_logs" {
 
     filter {}
 
-    # Abort incomplete multipart uploads after 7 days.
-    # Fixes CKV_AWS_300.
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
     }
@@ -113,22 +208,13 @@ resource "aws_s3_bucket_lifecycle_configuration" "access_logs" {
   }
 }
 
-# ---------------------------------------------------------
-# Access Log Bucket Event Notifications
-# CKV2_AWS_62
-# ---------------------------------------------------------
-
 resource "aws_s3_bucket_notification" "access_logs" {
   bucket      = aws_s3_bucket.access_logs.id
   eventbridge = true
 }
 
-# =========================================================
-# KYC DOCUMENT BUCKET
-# =========================================================
-
 resource "aws_s3_bucket" "kyc" {
-  # checkov:skip=CKV_AWS_144:Cross-region replication is intentionally not enabled in the development environment; production DR replication is managed separately
+  # checkov:skip=CKV_AWS_144:Cross-region replication is deferred for the dev environment; regional DR will be implemented separately for staging and production.
 
   bucket = "${var.project_name}-${var.environment}-kyc-${random_id.bucket_suffix.hex}"
 
@@ -138,14 +224,9 @@ resource "aws_s3_bucket" "kyc" {
     Name        = "${var.project_name}-${var.environment}-kyc"
     Environment = var.environment
     DataClass   = "KYC"
+    ManagedBy   = "Terraform"
   }
 }
-
-# ---------------------------------------------------------
-# KYC Versioning
-# Required for S3 Object Lock
-# ---------------------------------------------------------
-
 resource "aws_s3_bucket_versioning" "kyc" {
   bucket = aws_s3_bucket.kyc.id
 
@@ -153,10 +234,6 @@ resource "aws_s3_bucket_versioning" "kyc" {
     status = "Enabled"
   }
 }
-
-# ---------------------------------------------------------
-# KYC KMS Encryption
-# ---------------------------------------------------------
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "kyc" {
   bucket = aws_s3_bucket.kyc.id
@@ -171,10 +248,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "kyc" {
   }
 }
 
-# ---------------------------------------------------------
-# KYC Public Access Block
-# ---------------------------------------------------------
-
 resource "aws_s3_bucket_public_access_block" "kyc" {
   bucket = aws_s3_bucket.kyc.id
 
@@ -183,10 +256,6 @@ resource "aws_s3_bucket_public_access_block" "kyc" {
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
-
-# ---------------------------------------------------------
-# KYC Object Lock
-# ---------------------------------------------------------
 
 resource "aws_s3_bucket_object_lock_configuration" "kyc" {
   bucket = aws_s3_bucket.kyc.id
@@ -203,16 +272,6 @@ resource "aws_s3_bucket_object_lock_configuration" "kyc" {
   }
 }
 
-# ---------------------------------------------------------
-# KYC Lifecycle
-#
-# CKV2_AWS_61
-# CKV_AWS_300
-#
-# Current KYC objects are not automatically expired because
-# Object Lock controls their required retention.
-# ---------------------------------------------------------
-
 resource "aws_s3_bucket_lifecycle_configuration" "kyc" {
   bucket = aws_s3_bucket.kyc.id
 
@@ -227,8 +286,6 @@ resource "aws_s3_bucket_lifecycle_configuration" "kyc" {
 
     filter {}
 
-    # Abort incomplete multipart uploads after 7 days.
-    # Fixes CKV_AWS_300.
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
     }
@@ -239,35 +296,21 @@ resource "aws_s3_bucket_lifecycle_configuration" "kyc" {
   }
 }
 
-# ---------------------------------------------------------
-# KYC Server Access Logging
-# ---------------------------------------------------------
-
 resource "aws_s3_bucket_logging" "kyc" {
   bucket = aws_s3_bucket.kyc.id
 
   target_bucket = aws_s3_bucket.access_logs.id
   target_prefix = "kyc/"
-}
 
-# ---------------------------------------------------------
-# KYC Event Notifications
-#
-# CKV2_AWS_62
-# ---------------------------------------------------------
+  depends_on = [
+    aws_s3_bucket_policy.access_logs
+  ]
+}
 
 resource "aws_s3_bucket_notification" "kyc" {
   bucket      = aws_s3_bucket.kyc.id
   eventbridge = true
 }
-
-# =========================================================
-# ELASTICACHE REDIS
-# =========================================================
-
-# ---------------------------------------------------------
-# Redis Security Group
-# ---------------------------------------------------------
 
 resource "aws_security_group" "redis" {
   name        = "${var.project_name}-${var.environment}-redis-sg"
@@ -277,12 +320,9 @@ resource "aws_security_group" "redis" {
   tags = {
     Name        = "${var.project_name}-${var.environment}-redis-sg"
     Environment = var.environment
+    ManagedBy   = "Terraform"
   }
 }
-
-# ---------------------------------------------------------
-# Application -> Redis
-# ---------------------------------------------------------
 
 resource "aws_vpc_security_group_ingress_rule" "app_to_redis" {
   security_group_id            = aws_security_group.redis.id
@@ -295,18 +335,10 @@ resource "aws_vpc_security_group_ingress_rule" "app_to_redis" {
   description = "Allow Redis traffic from application security group"
 }
 
-# ---------------------------------------------------------
-# Redis AUTH Password
-# ---------------------------------------------------------
-
 resource "random_password" "redis_auth" {
   length  = 32
   special = false
 }
-
-# ---------------------------------------------------------
-# Redis AUTH Secret
-# ---------------------------------------------------------
 
 resource "aws_secretsmanager_secret" "redis" {
   name        = "${var.project_name}/${var.environment}/redis/auth"
@@ -316,6 +348,7 @@ resource "aws_secretsmanager_secret" "redis" {
   tags = {
     Name        = "${var.project_name}-${var.environment}-redis-auth"
     Environment = var.environment
+    ManagedBy   = "Terraform"
   }
 }
 
@@ -326,12 +359,6 @@ resource "aws_secretsmanager_secret_version" "redis" {
     auth_token = random_password.redis_auth.result
   })
 }
-
-# ---------------------------------------------------------
-# Redis Secret Rotation
-#
-# CKV2_AWS_57
-# ---------------------------------------------------------
 
 resource "aws_secretsmanager_secret_rotation" "redis" {
   count = var.redis_rotation_lambda_arn != null ? 1 : 0
@@ -348,10 +375,6 @@ resource "aws_secretsmanager_secret_rotation" "redis" {
   ]
 }
 
-# ---------------------------------------------------------
-# Redis Subnet Group
-# ---------------------------------------------------------
-
 resource "aws_elasticache_subnet_group" "this" {
   name       = "${var.project_name}-${var.environment}-redis-subnets"
   subnet_ids = var.private_subnet_ids
@@ -359,12 +382,9 @@ resource "aws_elasticache_subnet_group" "this" {
   tags = {
     Name        = "${var.project_name}-${var.environment}-redis-subnets"
     Environment = var.environment
+    ManagedBy   = "Terraform"
   }
 }
-
-# ---------------------------------------------------------
-# Redis Replication Group
-# ---------------------------------------------------------
 
 resource "aws_elasticache_replication_group" "this" {
   replication_group_id = "${var.project_name}-${var.environment}-redis"
@@ -398,5 +418,6 @@ resource "aws_elasticache_replication_group" "this" {
   tags = {
     Name        = "${var.project_name}-${var.environment}-redis"
     Environment = var.environment
+    ManagedBy   = "Terraform"
   }
 }

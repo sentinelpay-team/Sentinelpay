@@ -3,17 +3,9 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 data "aws_iam_policy_document" "this" {
-
-  #checkov:skip=CKV_AWS_109:KMS key resource policy; Resource "*" applies only to the KMS key this policy is attached to, with explicit principals and conditions.
-  #checkov:skip=CKV_AWS_111:KMS key resource policy; write permissions are restricted to explicitly defined principals and service conditions.
-  #checkov:skip=CKV_AWS_356:AWS KMS key policies use Resource "*" to represent the specific KMS key to which the policy is attached.
-
-  # ------------------------------------------------
-  # Enable IAM permissions for this AWS account
-  # ------------------------------------------------
-  # This allows IAM policies in this account to delegate access
-  # to this KMS key. It does NOT automatically give every IAM
-  # identity unrestricted KMS access.
+  # checkov:skip=CKV_AWS_109:KMS key policy contains required administrative and AWS service permissions; further least-privilege decomposition is deferred to avoid disrupting active service integrations.
+  # checkov:skip=CKV_AWS_111:KMS write permissions are intentionally granted to explicitly defined key administrators and required AWS services.
+  # checkov:skip=CKV_AWS_356:KMS key policies require Resource "*" because permissions apply to the KMS key associated with this policy; principals and actions are explicitly constrained.
   statement {
     sid    = "EnableIAMUserPermissions"
     effect = "Allow"
@@ -33,9 +25,6 @@ data "aws_iam_policy_document" "this" {
     resources = ["*"]
   }
 
-  # ------------------------------------------------
-  # KMS administrators
-  # ------------------------------------------------
   statement {
     sid    = "KeyAdministrators"
     effect = "Allow"
@@ -68,11 +57,17 @@ data "aws_iam_policy_document" "this" {
     ]
 
     resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:PrincipalAccount"
+
+      values = [
+        data.aws_caller_identity.current.account_id
+      ]
+    }
   }
 
-  # ------------------------------------------------
-  # Application / service roles
-  # ------------------------------------------------
   statement {
     sid    = "KeyUsers"
     effect = "Allow"
@@ -93,13 +88,19 @@ data "aws_iam_policy_document" "this" {
     ]
 
     resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:PrincipalAccount"
+
+      values = [
+        data.aws_caller_identity.current.account_id
+      ]
+    }
   }
 
-  # ------------------------------------------------
-  # AWS resource grants
-  # ------------------------------------------------
   statement {
-    sid    = "ServiceGrants"
+    sid    = "KeyUsersServiceGrants"
     effect = "Allow"
 
     principals {
@@ -123,13 +124,19 @@ data "aws_iam_policy_document" "this" {
         "true"
       ]
     }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:PrincipalAccount"
+
+      values = [
+        data.aws_caller_identity.current.account_id
+      ]
+    }
   }
 
-  # ------------------------------------------------
-  # CloudTrail - Generate Data Key
-  # ------------------------------------------------
   statement {
-    sid    = "AllowCloudTrailGenerateDataKey"
+    sid    = "AllowCloudTrailUse"
     effect = "Allow"
 
     principals {
@@ -141,7 +148,9 @@ data "aws_iam_policy_document" "this" {
     }
 
     actions = [
-      "kms:GenerateDataKey"
+      "kms:GenerateDataKey*",
+      "kms:Decrypt",
+      "kms:DescribeKey"
     ]
 
     resources = ["*"]
@@ -154,33 +163,56 @@ data "aws_iam_policy_document" "this" {
         "arn:aws:cloudtrail:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:trail/${var.project_name}-${var.environment}-trail"
       ]
     }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+
+      values = [
+        data.aws_caller_identity.current.account_id
+      ]
+    }
   }
 
-  # ------------------------------------------------
-  # CloudTrail - Describe Key
-  # ------------------------------------------------
   statement {
-    sid    = "AllowCloudTrailDescribeKey"
+    sid    = "AllowSNSUse"
     effect = "Allow"
 
     principals {
       type = "Service"
 
       identifiers = [
-        "cloudtrail.amazonaws.com"
+        "sns.amazonaws.com"
       ]
     }
 
     actions = [
+      "kms:Decrypt",
+      "kms:GenerateDataKey*",
       "kms:DescribeKey"
     ]
 
     resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+
+      values = [
+        "sns.${data.aws_region.current.region}.amazonaws.com"
+      ]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+
+      values = [
+        data.aws_caller_identity.current.account_id
+      ]
+    }
   }
 
-  # ------------------------------------------------
-  # Secrets Manager
-  # ------------------------------------------------
   statement {
     sid    = "AllowSecretsManagerUse"
     effect = "Allow"
@@ -211,11 +243,17 @@ data "aws_iam_policy_document" "this" {
         "secretsmanager.${data.aws_region.current.region}.amazonaws.com"
       ]
     }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+
+      values = [
+        data.aws_caller_identity.current.account_id
+      ]
+    }
   }
 
-  # ------------------------------------------------
-  # S3
-  # ------------------------------------------------
   statement {
     sid    = "AllowS3Use"
     effect = "Allow"
@@ -248,36 +286,10 @@ data "aws_iam_policy_document" "this" {
         "s3.${data.aws_region.current.region}.amazonaws.com"
       ]
     }
-  }
-
-  # ------------------------------------------------
-  # AWS Config
-  # ------------------------------------------------
-  statement {
-    sid    = "AllowAWSConfigUse"
-    effect = "Allow"
-
-    principals {
-      type = "Service"
-
-      identifiers = [
-        "config.amazonaws.com"
-      ]
-    }
-
-    actions = [
-      "kms:Encrypt",
-      "kms:Decrypt",
-      "kms:GenerateDataKey",
-      "kms:GenerateDataKeyWithoutPlaintext",
-      "kms:DescribeKey"
-    ]
-
-    resources = ["*"]
 
     condition {
       test     = "StringEquals"
-      variable = "AWS:SourceAccount"
+      variable = "aws:SourceAccount"
 
       values = [
         data.aws_caller_identity.current.account_id
@@ -285,9 +297,6 @@ data "aws_iam_policy_document" "this" {
     }
   }
 
-  # ------------------------------------------------
-  # RDS
-  # ------------------------------------------------
   statement {
     sid    = "AllowRDSUse"
     effect = "Allow"
@@ -321,11 +330,111 @@ data "aws_iam_policy_document" "this" {
         "rds.${data.aws_region.current.region}.amazonaws.com"
       ]
     }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+
+      values = [
+        data.aws_caller_identity.current.account_id
+      ]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "kms:GrantIsForAWSResource"
+
+      values = [
+        "true"
+      ]
+    }
   }
 
-  # ------------------------------------------------
-  # CloudWatch Logs
-  # ------------------------------------------------
+  statement {
+    sid    = "AllowElastiCacheUse"
+    effect = "Allow"
+
+    principals {
+      type = "Service"
+
+      identifiers = [
+        "elasticache.amazonaws.com"
+      ]
+    }
+
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncryptFrom",
+      "kms:ReEncryptTo",
+      "kms:GenerateDataKey",
+      "kms:GenerateDataKeyWithoutPlaintext",
+      "kms:DescribeKey",
+      "kms:CreateGrant"
+    ]
+
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+
+      values = [
+        "elasticache.${data.aws_region.current.region}.amazonaws.com"
+      ]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+
+      values = [
+        data.aws_caller_identity.current.account_id
+      ]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "kms:GrantIsForAWSResource"
+
+      values = [
+        "true"
+      ]
+    }
+  }
+
+  statement {
+    sid    = "AllowAWSConfigUse"
+    effect = "Allow"
+
+    principals {
+      type = "Service"
+
+      identifiers = [
+        "config.amazonaws.com"
+      ]
+    }
+
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:GenerateDataKey",
+      "kms:GenerateDataKeyWithoutPlaintext",
+      "kms:DescribeKey"
+    ]
+
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+
+      values = [
+        data.aws_caller_identity.current.account_id
+      ]
+    }
+  }
+
   statement {
     sid    = "AllowCloudWatchLogsUse"
     effect = "Allow"
@@ -353,15 +462,21 @@ data "aws_iam_policy_document" "this" {
       variable = "kms:EncryptionContext:aws:logs:arn"
 
       values = [
-        "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${var.project_name}-${var.environment}*"
+        "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:*"
+      ]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+
+      values = [
+        data.aws_caller_identity.current.account_id
       ]
     }
   }
 }
 
-# ------------------------------------------------
-# Customer-managed KMS key
-# ------------------------------------------------
 resource "aws_kms_key" "this" {
   description             = "${var.project_name}-${var.environment}-data"
   deletion_window_in_days = 30
@@ -376,9 +491,6 @@ resource "aws_kms_key" "this" {
   }
 }
 
-# ------------------------------------------------
-# KMS alias
-# ------------------------------------------------
 resource "aws_kms_alias" "this" {
   name          = "alias/${var.project_name}-${var.environment}-data"
   target_key_id = aws_kms_key.this.key_id

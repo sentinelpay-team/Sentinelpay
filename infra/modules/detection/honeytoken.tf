@@ -1,15 +1,6 @@
-# =========================================================
-# IAM HONEYTOKEN USER
-#
-# This IAM user is intentionally created as a deception
-# credential. It MUST NOT receive any IAM permissions.
-#
-# Any attempted use of its access key should be treated as
-# a security incident.
-# =========================================================
-
 resource "aws_iam_user" "honeytoken" {
-  # checkov:skip=CKV_AWS_273:This IAM user is intentionally created as a security honeytoken and must not use IAM Identity Center
+  # checkov:skip=CKV_AWS_273:Intentional non-human deception identity used as a security honeytoken; interactive console access is not permitted.
+  # checkov:skip=CKV_AWS_273:Intentional non-human deception account used as a security honeytoken; no console access is configured.
 
   name = "${var.project_name}-${var.environment}-honeytoken"
 
@@ -21,28 +12,12 @@ resource "aws_iam_user" "honeytoken" {
   }
 }
 
-# =========================================================
-# HONEYTOKEN ACCESS KEY
-#
-# Intentionally creates an access key that should NEVER
-# legitimately be used.
-#
-# No IAM policies should be attached to the honeytoken user.
-# =========================================================
-
 resource "aws_iam_access_key" "honeytoken" {
   user = aws_iam_user.honeytoken.name
 }
 
-# =========================================================
-# SECRETS MANAGER SECRET
-#
-# Stores the honeytoken credentials securely using the
-# project's customer-managed KMS key.
-# =========================================================
-
 resource "aws_secretsmanager_secret" "honeytoken" {
-  # checkov:skip=CKV2_AWS_57:Automatic rotation is intentionally disabled because this is a security honeytoken; rotating the credential would require synchronised updates to the detection rule
+  # checkov:skip=CKV2_AWS_57:Honeytoken credential is intentionally stable for detection; rotation is handled as part of the deception-control lifecycle.
 
   name        = "${var.project_name}/${var.environment}/honeytoken"
   description = "Security honeytoken credentials - do not use"
@@ -58,9 +33,6 @@ resource "aws_secretsmanager_secret" "honeytoken" {
     ManagedBy   = "Terraform"
   }
 }
-# =========================================================
-# HONEYTOKEN SECRET VERSION
-# =========================================================
 
 resource "aws_secretsmanager_secret_version" "honeytoken" {
   secret_id = aws_secretsmanager_secret.honeytoken.id
@@ -71,22 +43,17 @@ resource "aws_secretsmanager_secret_version" "honeytoken" {
   })
 }
 
-# =========================================================
-# EVENTBRIDGE RULE
-#
-# Detects any AWS API call made using the honeytoken
-# access key.
-#
-# CloudTrail must be enabled for this detection to work.
-# =========================================================
-
 resource "aws_cloudwatch_event_rule" "honeytoken" {
-  name = "${var.project_name}-${var.environment}-honeytoken-used"
-
+  name        = "${var.project_name}-${var.environment}-honeytoken-used"
   description = "Detects attempted use of SentinelPay honeytoken credentials"
 
   event_pattern = jsonencode({
-    "detail-type" = [
+    source = [
+      "aws.iam",
+      "aws.sts"
+    ]
+
+    detail-type = [
       "AWS API Call via CloudTrail"
     ]
 

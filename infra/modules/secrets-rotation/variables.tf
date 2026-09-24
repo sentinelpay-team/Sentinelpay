@@ -10,6 +10,10 @@ variable "vpc_id" {
   type = string
 }
 
+variable "vpc_cidr" {
+  type = string
+}
+
 variable "private_subnet_ids" {
   type = list(string)
 }
@@ -22,27 +26,32 @@ variable "kms_key_arn" {
   type = string
 }
 
-variable "db_host" {
+variable "rotation_lambda_zip" {
   type = string
 }
 
-variable "db_port" {
-  type = number
-}
-
-variable "db_name" {
+variable "database_host" {
   type = string
 }
 
-variable "db_username" {
+variable "database_name" {
   type = string
 }
 
-variable "db_password" {
+variable "database_username" {
+  type = string
+}
+
+variable "database_password" {
   type      = string
   sensitive = true
 }
 
-variable "rotation_lambda_zip" {
+variable "database_port" {
+  type    = number
+  default = 5432
+}
+
+variable "database_instance_identifier" {
   type = string
 }

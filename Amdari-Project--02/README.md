@@ -26,7 +26,21 @@ sentinelpay/
 ├── .github/workflows/       # The current (inadequate) CI pipeline
 └── README.md
 ```
+## TLS / HTTPS Configuration
 
+The development environment currently uses HTTP at the Application Load Balancer because this project does not use a custom domain or a Route 53 hosted zone. As a result, there is no DNS-validated ACM public certificate configured for the development environment.
+
+The Terraform edge module is HTTPS-ready and supports:
+
+- HTTPS listener on port 443
+- TLS 1.2/1.3 using `ELBSecurityPolicy-TLS13-1-2-2021-06`
+- ACM certificate integration through `acm_certificate_arn`
+- HTTP-to-HTTPS `301` redirection
+- AWS WAF protection in front of the application
+
+When `acm_certificate_arn` is not supplied, the development environment uses the HTTP listener on port 80.
+
+For a production deployment, a validated ACM certificate and controlled domain name must be configured before exposing the application.
 There are **two services**, sharing **one PostgreSQL database** and **one Redis cache**:
 
 | Service        | Stack             | Port  | Responsibility                                            |

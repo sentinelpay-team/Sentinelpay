@@ -1,19 +1,38 @@
 variable "project_name" {
-  type = string
+  description = "Name of the project"
+  type        = string
+
+  validation {
+    condition     = length(trimspace(var.project_name)) > 0
+    error_message = "project_name must not be empty."
+  }
 }
 
-variable "permission_set_name" {
-  type    = string
-  default = "Developer"
+variable "environment" {
+  description = "Deployment environment"
+  type        = string
+
+  validation {
+    condition = contains(
+      ["dev", "staging", "prod"],
+      var.environment
+    )
+
+    error_message = "environment must be dev, staging, or prod."
+  }
 }
 
 variable "session_duration" {
-  description = "Maximum Identity Center session duration"
+  description = "Maximum IAM Identity Center permission-set session duration"
   type        = string
   default     = "PT4H"
-}
 
-variable "managed_policy_arn" {
-  type    = string
-  default = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+  validation {
+    condition = contains(
+      ["PT1H", "PT2H", "PT3H", "PT4H"],
+      var.session_duration
+    )
+
+    error_message = "session_duration must be PT1H, PT2H, PT3H, or PT4H."
+  }
 }

@@ -71,38 +71,10 @@ variable "github_branch" {
   default     = "main"
 }
 
-
-# =========================================================
-# ALB / TLS
-# =========================================================
-
 variable "acm_certificate_arn" {
   description = "ARN of the ACM certificate used by the ALB HTTPS listener"
   type        = string
   default     = null
-}
-
-
-# =========================================================
-# ECS / COMPUTE
-# =========================================================
-
-variable "container_image" {
-  description = "Docker image used by the ECS task"
-  type        = string
-  default     = "nginx:alpine"
-}
-
-variable "container_port" {
-  description = "Port exposed by the ECS container"
-  type        = number
-  default     = 80
-}
-
-variable "desired_count" {
-  description = "Desired number of ECS tasks"
-  type        = number
-  default     = 1
 }
 
 variable "name_prefix" {
@@ -111,10 +83,67 @@ variable "name_prefix" {
   default     = null
 }
 
+variable "payments_container_image" {
+  description = "Container image URI used by the payments-api ECS task"
+  type        = string
+}
 
-# =========================================================
-# COMMON TAGS
-# =========================================================
+variable "payments_container_port" {
+  description = "Port exposed by the payments-api container"
+  type        = number
+  default     = 8001
+
+  validation {
+    condition = (
+      var.payments_container_port >= 1 &&
+      var.payments_container_port <= 65535
+    )
+
+    error_message = "payments_container_port must be between 1 and 65535."
+  }
+}
+
+variable "payments_desired_count" {
+  description = "Desired number of payments-api ECS tasks"
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.payments_desired_count >= 1
+    error_message = "payments_desired_count must be at least 1."
+  }
+}
+
+variable "kyc_container_image" {
+  description = "Container image URI used by the kyc-api ECS task"
+  type        = string
+}
+
+variable "kyc_container_port" {
+  description = "Port exposed by the kyc-api container"
+  type        = number
+  default     = 8002
+
+  validation {
+    condition = (
+      var.kyc_container_port >= 1 &&
+      var.kyc_container_port <= 65535
+    )
+
+    error_message = "kyc_container_port must be between 1 and 65535."
+  }
+}
+
+variable "kyc_desired_count" {
+  description = "Desired number of kyc-api ECS tasks"
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.kyc_desired_count >= 1
+    error_message = "kyc_desired_count must be at least 1."
+  }
+}
 
 variable "tags" {
   description = "Common tags to apply to resources"
