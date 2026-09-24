@@ -49,6 +49,13 @@ def lambda_handler(event, context):
         )
     )
 
+    if not interfaces:
+        return {
+            "status": "processed",
+            "reason": "no network interfaces found",
+            "quarantined_interfaces": []
+        }
+
     quarantined = []
 
     for eni in interfaces:

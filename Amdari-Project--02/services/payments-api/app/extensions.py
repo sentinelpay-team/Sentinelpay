@@ -1,26 +1,35 @@
 """Shared Flask extensions."""
 
 import os
+from urllib.parse import quote
 
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 
-# ============================================================================
-# V-APP-08: SINGLE SHARED RATE-LIMITER
-# ============================================================================
-#
-# FUNCTIONALITY:
-# This module owns the application's one Flask-Limiter instance.
-#
-# REMEDIATION:
-# Keeping a single extension prevents route modules from accidentally creating
-# independent limiter instances that are never attached to the served Flask
-# application.
+redis_host = os.environ["REDIS_HOST"]
+redis_port = os.environ.get("REDIS_PORT", "6379")
+redis_auth_token = quote(
+    os.environ["REDIS_AUTH_TOKEN"],
+    safe="",
+)
+
+redis_scheme = os.environ.get(
+    "REDIS_SCHEME",
+    "rediss",
+)
+
+redis_db = os.environ.get(
+    "REDIS_DB",
+    "2",
+)
+
+rate_limit_storage_uri = (
+    f"{redis_scheme}://:{redis_auth_token}"
+    f"@{redis_host}:{redis_port}/{redis_db}"
+)
+
 limiter = Limiter(
     key_func=get_remote_address,
-    storage_uri=os.getenv(
-        "RATELIMIT_STORAGE_URI",
-        "redis://redis:6379/2",
-    ),
+    storage_uri=rate_limit_storage_uri,
 )

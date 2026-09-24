@@ -55,6 +55,11 @@ resource "aws_iam_role" "quarantine" {
   })
 }
 
+resource "aws_iam_role_policy_attachment" "quarantine_vpc_access" {
+  role       = aws_iam_role.quarantine.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
 resource "aws_iam_role_policy" "quarantine" {
   role = aws_iam_role.quarantine.id
 
@@ -72,20 +77,19 @@ resource "aws_iam_role_policy" "quarantine" {
 
         Resource = "*"
       },
-
       {
-        Sid    = "ManageLambdaNetworkInterfaces"
+        Sid    = "QuarantineNetworkInterfaces"
         Effect = "Allow"
 
         Action = [
-          "ec2:CreateNetworkInterface",
-          "ec2:DeleteNetworkInterface",
           "ec2:ModifyNetworkInterfaceAttribute"
         ]
 
-        Resource = "arn:aws:ec2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:network-interface/*"
+        Resource = [
+          "arn:aws:ec2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:network-interface/*",
+          aws_security_group.quarantine.arn
+        ]
       },
-
       {
         Sid    = "CreateLambdaLogGroup"
         Effect = "Allow"
@@ -96,7 +100,6 @@ resource "aws_iam_role_policy" "quarantine" {
 
         Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project_name}-${var.environment}-quarantine"
       },
-
       {
         Sid    = "WriteLambdaLogs"
         Effect = "Allow"
@@ -108,7 +111,6 @@ resource "aws_iam_role_policy" "quarantine" {
 
         Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project_name}-${var.environment}-quarantine:*"
       },
-
       {
         Sid    = "WriteXRayTracing"
         Effect = "Allow"
@@ -120,7 +122,6 @@ resource "aws_iam_role_policy" "quarantine" {
 
         Resource = "*"
       },
-
       {
         Sid    = "SendToDeadLetterQueue"
         Effect = "Allow"
@@ -142,14 +143,12 @@ data "archive_file" "quarantine" {
   output_path = "${path.module}/quarantine.zip"
 }
 
-# Lambda code-signing profile
 resource "aws_signer_signing_profile" "quarantine" {
   platform_id = "AWSLambda-SHA384-ECDSA"
 
   name_prefix = "${var.project_name}_${var.environment}_quarantine_"
 }
 
-# Lambda code-signing configuration
 resource "aws_lambda_code_signing_config" "quarantine" {
   description = "Code signing configuration for quarantine Lambda"
 
@@ -164,13 +163,13 @@ resource "aws_lambda_code_signing_config" "quarantine" {
   }
 }
 
-# Dead Letter Queue
 resource "aws_sqs_queue" "quarantine_dlq" {
   name              = "${var.project_name}-${var.environment}-quarantine-dlq"
   kms_master_key_id = var.kms_key_arn
 }
 
 resource "aws_lambda_function" "quarantine" {
+  # checkov:skip=CKV_AWS_115:Reserved concurrency cannot be configured because the AWS account concurrency quota must retain at least 10 unreserved concurrent executions.
   function_name = "${var.project_name}-${var.environment}-quarantine"
 
   role    = aws_iam_role.quarantine.arn
@@ -180,26 +179,19 @@ resource "aws_lambda_function" "quarantine" {
   filename         = data.archive_file.quarantine.output_path
   source_code_hash = data.archive_file.quarantine.output_base64sha256
 
-  # CKV_AWS_173
   kms_key_arn = var.kms_key_arn
 
-  # CKV_AWS_272
+
   code_signing_config_arn = aws_lambda_code_signing_config.quarantine.arn
 
-  # CKV_AWS_115
-  reserved_concurrent_executions = 5
-
-  # CKV_AWS_50
   tracing_config {
     mode = "Active"
   }
 
-  # CKV_AWS_116
   dead_letter_config {
     target_arn = aws_sqs_queue.quarantine_dlq.arn
   }
 
-  # CKV_AWS_117
   vpc_config {
     subnet_ids         = var.private_subnet_ids
     security_group_ids = [aws_security_group.quarantine.id]
@@ -212,15 +204,20 @@ resource "aws_lambda_function" "quarantine" {
   }
 
   depends_on = [
-    aws_iam_role_policy.quarantine
+    aws_iam_role_policy.quarantine,
+    aws_iam_role_policy_attachment.quarantine_vpc_access
   ]
 }
 
 resource "aws_cloudwatch_event_target" "guardduty" {
   rule      = aws_cloudwatch_event_rule.guardduty_high.name
   target_id = "QuarantineLambda"
+  arn       = aws_lambda_function.quarantine.arn
 
-  arn = aws_lambda_function.quarantine.arn
+  retry_policy {
+    maximum_event_age_in_seconds = 3600
+    maximum_retry_attempts       = 2
+  }
 }
 
 resource "aws_lambda_permission" "eventbridge" {

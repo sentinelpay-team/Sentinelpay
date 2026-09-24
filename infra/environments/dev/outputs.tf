@@ -15,11 +15,19 @@ output "alb_dns_name" {
 }
 
 output "ecs_cluster" {
-  value = module.compute.ecs_cluster_name
+  description = "Name of the ECS cluster"
+  value       = module.compute.cluster_name
 }
 
-output "ecs_service" {
-  value = module.compute.ecs_service_name
+output "payments_ecs_service" {
+  description = "Name of the payments-api ECS service"
+  value       = module.compute.payments_service_name
+}
+
+output "kyc_ecs_service" {
+  description = "Name of the kyc-api ECS service"
+  value       = module.compute.kyc_service_name
+
 }
 output "cloudtrail_name" {
   value = module.detection.cloudtrail_name

@@ -1,7 +1,3 @@
-# =========================================================
-# VPC
-# =========================================================
-
 resource "aws_vpc" "this" {
   cidr_block = var.vpc_cidr
 
@@ -17,10 +13,6 @@ resource "aws_vpc" "this" {
   )
 }
 
-# =========================================================
-# INTERNET GATEWAY
-# =========================================================
-
 resource "aws_internet_gateway" "this" {
   vpc_id = aws_vpc.this.id
 
@@ -33,20 +25,12 @@ resource "aws_internet_gateway" "this" {
   )
 }
 
-# =========================================================
-# PUBLIC SUBNETS
-# =========================================================
-
 resource "aws_subnet" "public" {
   count = length(var.public_subnet_cidrs)
 
-  vpc_id            = aws_vpc.this.id
-  cidr_block        = var.public_subnet_cidrs[count.index]
-  availability_zone = var.availability_zones[count.index]
-
-  # CKV_AWS_130
-  # Do not automatically assign public IP addresses.
-  # ALB and NAT Gateway do not require this setting.
+  vpc_id                  = aws_vpc.this.id
+  cidr_block              = var.public_subnet_cidrs[count.index]
+  availability_zone       = var.availability_zones[count.index]
   map_public_ip_on_launch = false
 
   tags = merge(
@@ -59,17 +43,12 @@ resource "aws_subnet" "public" {
   )
 }
 
-# =========================================================
-# PRIVATE SUBNETS
-# =========================================================
-
 resource "aws_subnet" "private" {
   count = length(var.private_subnet_cidrs)
 
-  vpc_id            = aws_vpc.this.id
-  cidr_block        = var.private_subnet_cidrs[count.index]
-  availability_zone = var.availability_zones[count.index]
-
+  vpc_id                  = aws_vpc.this.id
+  cidr_block              = var.private_subnet_cidrs[count.index]
+  availability_zone       = var.availability_zones[count.index]
   map_public_ip_on_launch = false
 
   tags = merge(
@@ -81,10 +60,6 @@ resource "aws_subnet" "private" {
     }
   )
 }
-
-# =========================================================
-# NAT GATEWAY
-# =========================================================
 
 resource "aws_eip" "nat" {
   domain = "vpc"
@@ -119,10 +94,6 @@ resource "aws_nat_gateway" "this" {
   )
 }
 
-# =========================================================
-# PUBLIC ROUTE TABLE
-# =========================================================
-
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.this.id
 
@@ -146,10 +117,6 @@ resource "aws_route_table_association" "public" {
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
 }
-
-# =========================================================
-# PRIVATE ROUTE TABLE
-# =========================================================
 
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.this.id
@@ -175,13 +142,6 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private.id
 }
 
-# =========================================================
-# DEFAULT SECURITY GROUP
-#
-# Prevent use of the default VPC security group.
-# No ingress or egress rules are permitted.
-# =========================================================
-
 resource "aws_default_security_group" "default" {
   vpc_id = aws_vpc.this.id
 
@@ -197,14 +157,6 @@ resource "aws_default_security_group" "default" {
   )
 }
 
-# =========================================================
-# VPC FLOW LOG - CLOUDWATCH LOG GROUP
-#
-# CKV2_AWS_11
-# CKV_AWS_158
-# CKV_AWS_338
-# =========================================================
-
 resource "aws_cloudwatch_log_group" "vpc_flow_logs" {
   name = "/aws/vpc/${var.project_name}-${var.environment}/flow-logs"
 
@@ -219,10 +171,6 @@ resource "aws_cloudwatch_log_group" "vpc_flow_logs" {
     }
   )
 }
-
-# =========================================================
-# VPC FLOW LOG IAM ROLE
-# =========================================================
 
 resource "aws_iam_role" "vpc_flow_logs" {
   name = "${var.project_name}-${var.environment}-vpc-flow-logs-role"
@@ -252,16 +200,13 @@ resource "aws_iam_role" "vpc_flow_logs" {
   )
 }
 
-# =========================================================
-# VPC FLOW LOG IAM POLICY
-# =========================================================
-
+#tfsec:ignore:aws-iam-no-policy-wildcards
 resource "aws_iam_role_policy" "vpc_flow_logs" {
   name = "${var.project_name}-${var.environment}-vpc-flow-logs-policy"
   role = aws_iam_role.vpc_flow_logs.id
 
   policy = jsonencode({
-    Version = "2012-10-17" #tfsec:ignore:aws-iam-no-policy-wildcards
+    Version = "2012-10-17"
 
     Statement = [
       {
@@ -288,10 +233,6 @@ resource "aws_iam_role_policy" "vpc_flow_logs" {
     ]
   })
 }
-# =========================================================
-# VPC FLOW LOG
-# =========================================================
-
 resource "aws_flow_log" "this" {
   vpc_id = aws_vpc.this.id
 
@@ -315,4 +256,153 @@ resource "aws_flow_log" "this" {
   depends_on = [
     aws_iam_role_policy.vpc_flow_logs
   ]
+}
+
+resource "aws_security_group" "vpc_endpoints" {
+  name        = "${var.project_name}-${var.environment}-vpc-endpoints-sg"
+  description = "Security group for VPC interface endpoints"
+  vpc_id      = aws_vpc.this.id
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.project_name}-${var.environment}-vpc-endpoints-sg"
+      Environment = var.environment
+    }
+  )
+}
+
+resource "aws_vpc_security_group_ingress_rule" "vpc_endpoints_https" {
+  security_group_id = aws_security_group.vpc_endpoints.id
+
+  cidr_ipv4 = var.vpc_cidr
+
+  from_port   = 443
+  to_port     = 443
+  ip_protocol = "tcp"
+
+  description = "Allow HTTPS from resources within the VPC"
+}
+
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.this.id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+
+  route_table_ids = [
+    aws_route_table.private.id
+  ]
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.project_name}-${var.environment}-s3-endpoint"
+      Environment = var.environment
+    }
+  )
+}
+
+resource "aws_vpc_endpoint" "ecr_api" {
+  vpc_id              = aws_vpc.this.id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+
+  subnet_ids = aws_subnet.private[*].id
+
+  security_group_ids = [
+    aws_security_group.vpc_endpoints.id
+  ]
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.project_name}-${var.environment}-ecr-api-endpoint"
+      Environment = var.environment
+    }
+  )
+}
+
+resource "aws_vpc_endpoint" "ecr_dkr" {
+  vpc_id              = aws_vpc.this.id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.dkr"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+
+  subnet_ids = aws_subnet.private[*].id
+
+  security_group_ids = [
+    aws_security_group.vpc_endpoints.id
+  ]
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.project_name}-${var.environment}-ecr-dkr-endpoint"
+      Environment = var.environment
+    }
+  )
+}
+
+resource "aws_vpc_endpoint" "secretsmanager" {
+  vpc_id              = aws_vpc.this.id
+  service_name        = "com.amazonaws.${var.aws_region}.secretsmanager"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+
+  subnet_ids = aws_subnet.private[*].id
+
+  security_group_ids = [
+    aws_security_group.vpc_endpoints.id
+  ]
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.project_name}-${var.environment}-secretsmanager-endpoint"
+      Environment = var.environment
+    }
+  )
+}
+
+resource "aws_vpc_endpoint" "kms" {
+  vpc_id              = aws_vpc.this.id
+  service_name        = "com.amazonaws.${var.aws_region}.kms"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+
+  subnet_ids = aws_subnet.private[*].id
+
+  security_group_ids = [
+    aws_security_group.vpc_endpoints.id
+  ]
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.project_name}-${var.environment}-kms-endpoint"
+      Environment = var.environment
+    }
+  )
+}
+
+resource "aws_vpc_endpoint" "logs" {
+  vpc_id              = aws_vpc.this.id
+  service_name        = "com.amazonaws.${var.aws_region}.logs"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+
+  subnet_ids = aws_subnet.private[*].id
+
+  security_group_ids = [
+    aws_security_group.vpc_endpoints.id
+  ]
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.project_name}-${var.environment}-logs-endpoint"
+      Environment = var.environment
+    }
+  )
 }

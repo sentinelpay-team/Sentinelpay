@@ -1,8 +1,6 @@
 data "aws_caller_identity" "current" {}
 
-# =========================================================
-# RANDOM SUFFIXES
-# =========================================================
+data "aws_region" "current" {}
 
 resource "random_id" "trail_suffix" {
   byte_length = 4
@@ -11,26 +9,11 @@ resource "random_id" "trail_suffix" {
 resource "random_id" "access_logs_suffix" {
   byte_length = 4
 }
-
-# =========================================================
-# S3 ACCESS LOG DESTINATION BUCKET
-# =========================================================
-# This bucket receives S3 server access logs from the
-# CloudTrail bucket.
-#
-# AWS requires S3 server access-log destination buckets to
-# use SSE-S3 rather than SSE-KMS.
-# =========================================================
-#trivy:ignore:AWS-0089
-resource "aws_s3_bucket" "access_logs" { #tfsec:ignore:aws-s3-enable-bucket-logging
-  # This bucket is the destination for S3 server access logs.
-  # Enabling access logging on this bucket would create recursive logging.
-
-  # checkov:skip=CKV_AWS_18:This bucket is the destination for S3 server access logs and must not log to itself
-  # checkov:skip=CKV_AWS_145:S3 server access log destination buckets require SSE-S3 rather than SSE-KMS
-  # checkov:skip=CKV2_AWS_62:Event notifications are not required for the dedicated S3 access-log destination bucket
-  # checkov:skip=CKV_AWS_144:Cross-region replication is intentionally not enabled for the development access-log bucket
-
+#tfsec:ignore:aws-s3-enable-bucket-logging
+resource "aws_s3_bucket" "access_logs" {
+  # Dedicated log-destination bucket; server access logging is intentionally not enabled to avoid recursive logging.
+  # checkov:skip=CKV_AWS_144:Cross-region replication is deferred for the development environment; production DR will use a dedicated replica region.
+  # checkov:skip=CKV_AWS_145:AWS service access-log destination intentionally uses SSE-S3 for log-delivery compatibility.
   bucket = "${var.project_name}-${var.environment}-s3-access-logs-${random_id.access_logs_suffix.hex}"
 
   tags = {
@@ -39,6 +22,16 @@ resource "aws_s3_bucket" "access_logs" { #tfsec:ignore:aws-s3-enable-bucket-logg
     ManagedBy   = "Terraform"
   }
 }
+
+resource "aws_s3_bucket_notification" "access_logs" {
+  bucket      = aws_s3_bucket.access_logs.id
+  eventbridge = true
+
+  depends_on = [
+    aws_s3_bucket.access_logs
+  ]
+}
+
 resource "aws_s3_bucket_public_access_block" "access_logs" {
   bucket = aws_s3_bucket.access_logs.id
 
@@ -63,18 +56,8 @@ resource "aws_s3_bucket_versioning" "access_logs" {
     status = "Enabled"
   }
 }
-# =========================================================
-# S3 ACCESS LOG BUCKET ENCRYPTION
-# =========================================================
-# This bucket is dedicated to S3 server access logs.
-# SSE-S3 (AES256) is intentionally used instead of SSE-KMS.
-# Using SSE-KMS for an S3 server-access-log destination can
-# interfere with log delivery, so this exception is intentional.
-# =========================================================
-
 #tfsec:ignore:aws-s3-encryption-customer-key
 resource "aws_s3_bucket_server_side_encryption_configuration" "access_logs" {
-  # checkov:skip=CKV_AWS_145:S3 server access log destination buckets require SSE-S3 rather than SSE-KMS
 
   bucket = aws_s3_bucket.access_logs.id
 
@@ -152,9 +135,9 @@ data "aws_iam_policy_document" "access_logs_bucket" {
     }
   }
 }
+
 resource "aws_s3_bucket_policy" "access_logs" {
   bucket = aws_s3_bucket.access_logs.id
-
   policy = data.aws_iam_policy_document.access_logs_bucket.json
 
   depends_on = [
@@ -163,13 +146,9 @@ resource "aws_s3_bucket_policy" "access_logs" {
   ]
 }
 
-# =========================================================
-# CLOUDTRAIL S3 BUCKET
-# =========================================================
-
 resource "aws_s3_bucket" "cloudtrail" {
-  # checkov:skip=CKV_AWS_144:Cross-region replication is intentionally not enabled in development; production disaster-recovery replication is managed separately
-
+  # checkov:skip=CKV_AWS_144:Cross-region replication is deferred for the development environment; production DR will use a dedicated replica region.
+  # checkov:skip=CKV_AWS_145:CloudTrail log destination intentionally uses SSE-S3 for AWS log delivery compatibility.
   bucket = "${var.project_name}-${var.environment}-cloudtrail-${random_id.trail_suffix.hex}"
 
   object_lock_enabled = true
@@ -181,11 +160,6 @@ resource "aws_s3_bucket" "cloudtrail" {
   }
 }
 
-# =========================================================
-# VERSIONING
-# Required for S3 Object Lock
-# =========================================================
-
 resource "aws_s3_bucket_versioning" "cloudtrail" {
   bucket = aws_s3_bucket.cloudtrail.id
 
@@ -193,10 +167,6 @@ resource "aws_s3_bucket_versioning" "cloudtrail" {
     status = "Enabled"
   }
 }
-
-# =========================================================
-# OBJECT LOCK
-# =========================================================
 
 resource "aws_s3_bucket_object_lock_configuration" "cloudtrail" {
   bucket = aws_s3_bucket.cloudtrail.id
@@ -213,10 +183,6 @@ resource "aws_s3_bucket_object_lock_configuration" "cloudtrail" {
   ]
 }
 
-# =========================================================
-# PUBLIC ACCESS BLOCK
-# =========================================================
-
 resource "aws_s3_bucket_public_access_block" "cloudtrail" {
   bucket = aws_s3_bucket.cloudtrail.id
 
@@ -225,10 +191,6 @@ resource "aws_s3_bucket_public_access_block" "cloudtrail" {
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
-
-# =========================================================
-# CLOUDTRAIL BUCKET ENCRYPTION
-# =========================================================
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "cloudtrail" {
   bucket = aws_s3_bucket.cloudtrail.id
@@ -243,11 +205,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "cloudtrail" {
   }
 }
 
-# =========================================================
-# S3 SERVER ACCESS LOGGING
-# CKV_AWS_18
-# =========================================================
-
 resource "aws_s3_bucket_logging" "cloudtrail" {
   bucket = aws_s3_bucket.cloudtrail.id
 
@@ -258,14 +215,6 @@ resource "aws_s3_bucket_logging" "cloudtrail" {
     aws_s3_bucket_policy.access_logs
   ]
 }
-
-# =========================================================
-# S3 LIFECYCLE CONFIGURATION
-# CKV2_AWS_61
-#
-# We avoid normal object expiration here because CloudTrail
-# objects are protected by Object Lock COMPLIANCE retention.
-# =========================================================
 
 resource "aws_s3_bucket_lifecycle_configuration" "cloudtrail" {
   bucket = aws_s3_bucket.cloudtrail.id
@@ -287,23 +236,12 @@ resource "aws_s3_bucket_lifecycle_configuration" "cloudtrail" {
   ]
 }
 
-# =========================================================
-# EVENT NOTIFICATIONS
-# CKV2_AWS_62
-# =========================================================
-
 resource "aws_s3_bucket_notification" "cloudtrail" {
-  bucket = aws_s3_bucket.cloudtrail.id
-
+  bucket      = aws_s3_bucket.cloudtrail.id
   eventbridge = true
 }
 
-# =========================================================
-# CLOUDTRAIL BUCKET POLICY
-# =========================================================
-
 data "aws_iam_policy_document" "cloudtrail_bucket" {
-
   statement {
     sid    = "AWSCloudTrailAclCheck"
     effect = "Allow"
@@ -407,17 +345,12 @@ data "aws_iam_policy_document" "cloudtrail_bucket" {
 
 resource "aws_s3_bucket_policy" "cloudtrail" {
   bucket = aws_s3_bucket.cloudtrail.id
-
   policy = data.aws_iam_policy_document.cloudtrail_bucket.json
 
   depends_on = [
     aws_s3_bucket_public_access_block.cloudtrail
   ]
 }
-
-# =========================================================
-# SNS TOPIC
-# =========================================================
 
 resource "aws_sns_topic" "cloudtrail" {
   name = "${var.project_name}-${var.environment}-cloudtrail-notifications"
@@ -431,13 +364,7 @@ resource "aws_sns_topic" "cloudtrail" {
   }
 }
 
-# =========================================================
-# SNS TOPIC POLICY
-# Allow CloudTrail to publish notifications
-# =========================================================
-
 data "aws_iam_policy_document" "cloudtrail_sns" {
-
   statement {
     sid    = "AllowCloudTrailPublish"
     effect = "Allow"
@@ -466,18 +393,22 @@ data "aws_iam_policy_document" "cloudtrail_sns" {
         data.aws_caller_identity.current.account_id
       ]
     }
+
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+
+      values = [
+        "arn:aws:cloudtrail:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:trail/${var.project_name}-${var.environment}-trail"
+      ]
+    }
   }
 }
 
 resource "aws_sns_topic_policy" "cloudtrail" {
-  arn = aws_sns_topic.cloudtrail.arn
-
+  arn    = aws_sns_topic.cloudtrail.arn
   policy = data.aws_iam_policy_document.cloudtrail_sns.json
 }
-
-# =========================================================
-# CLOUDWATCH LOG GROUP
-# =========================================================
 
 resource "aws_cloudwatch_log_group" "cloudtrail" {
   name              = "/aws/cloudtrail/${var.project_name}-${var.environment}"
@@ -490,10 +421,6 @@ resource "aws_cloudwatch_log_group" "cloudtrail" {
     ManagedBy   = "Terraform"
   }
 }
-
-# =========================================================
-# CLOUDTRAIL CLOUDWATCH IAM ROLE
-# =========================================================
 
 resource "aws_iam_role" "cloudtrail_cloudwatch" {
   name = "${var.project_name}-${var.environment}-cloudtrail-cloudwatch"
@@ -521,17 +448,12 @@ resource "aws_iam_role" "cloudtrail_cloudwatch" {
     ManagedBy   = "Terraform"
   }
 }
-
-# =========================================================
-# CLOUDTRAIL CLOUDWATCH IAM POLICY
-# =========================================================
-
+#tfsec:ignore:aws-iam-no-policy-wildcards
 resource "aws_iam_role_policy" "cloudtrail_cloudwatch" {
   name = "${var.project_name}-${var.environment}-cloudtrail-cloudwatch-policy"
   role = aws_iam_role.cloudtrail_cloudwatch.id
 
   policy = jsonencode({
-    #tfsec:ignore:aws-iam-no-policy-wildcards
     Version = "2012-10-17"
 
     Statement = [
@@ -549,23 +471,18 @@ resource "aws_iam_role_policy" "cloudtrail_cloudwatch" {
     ]
   })
 }
-# =========================================================
-# CLOUDTRAIL
-# =========================================================
 
 resource "aws_cloudtrail" "this" {
   name = "${var.project_name}-${var.environment}-trail"
 
   s3_bucket_name = aws_s3_bucket.cloudtrail.bucket
-
-  kms_key_id = var.kms_key_arn
+  kms_key_id     = var.kms_key_arn
 
   enable_log_file_validation    = true
   include_global_service_events = true
   is_multi_region_trail         = true
   enable_logging                = true
 
-  # CloudTrail expects the SNS topic name here.
   sns_topic_name = aws_sns_topic.cloudtrail.name
 
   cloud_watch_logs_group_arn = "${aws_cloudwatch_log_group.cloudtrail.arn}:*"
