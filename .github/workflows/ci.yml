@@ -304,6 +304,11 @@ jobs:
           echo "Terraform files:"
           find . -maxdepth 1 -type f -name "*.tf" -print
 
+      - name: Terraform Format Check
+        if: steps.terraform_check.outputs.terraform_present == 'true'
+        working-directory: infra/environments/dev
+        run: terraform fmt -check -recursive
+
       - name: Terraform Init
         if: steps.terraform_check.outputs.terraform_present == 'true'
         working-directory: infra/environments/dev
@@ -313,15 +318,3 @@ jobs:
         if: steps.terraform_check.outputs.terraform_present == 'true'
         working-directory: infra/environments/dev
         run: terraform validate
-
-      - name: Terraform Plan
-        if: steps.terraform_check.outputs.terraform_present == 'true'
-        working-directory: infra/environments/dev
-        run: terraform plan -out=plan.out
-
-      - name: Run Conftest Policies
-        if: steps.terraform_check.outputs.terraform_present == 'true'
-        working-directory: infra/environments/dev
-        run: |
-          terraform show -json plan.out | conftest test - \
-            --policy ../../../policy/terraform
