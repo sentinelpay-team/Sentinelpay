@@ -245,7 +245,6 @@ jobs:
           echo "No HIGH or CRITICAL vulnerabilities detected."
   aws-oidc-test:
     name: Test AWS OIDC Authentication
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     permissions:
