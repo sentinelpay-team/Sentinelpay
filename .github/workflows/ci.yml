@@ -298,7 +298,10 @@ jobs:
         if: steps.terraform_check.outputs.terraform_present == 'true'
         working-directory: infra/environments/dev
         run: |
+          echo "Current Terraform directory:"
           pwd
+
+          echo "Terraform files:"
           find . -maxdepth 1 -type f -name "*.tf" -print
 
       - name: Terraform Init
