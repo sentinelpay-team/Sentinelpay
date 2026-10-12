@@ -81,7 +81,7 @@ resource "aws_lb" "this" {
 
   subnets = var.public_subnet_ids
 
-  enable_deletion_protection = true
+  enable_deletion_protection = false
   drop_invalid_header_fields = true
   enable_http2               = true
 

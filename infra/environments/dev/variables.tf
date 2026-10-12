@@ -121,3 +121,54 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+# =========================================================
+# PAYMENTS API
+# =========================================================
+
+variable "payments_container_image" {
+  description = "Docker image for the Payments API"
+  type        = string
+}
+
+variable "payments_container_port" {
+  description = "Container port for the Payments API"
+  type        = number
+  default     = 8001
+}
+
+variable "payments_desired_count" {
+  description = "Desired number of Payments API ECS tasks"
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.payments_desired_count >= 0
+    error_message = "Payments desired count cannot be negative."
+  }
+}
+
+# =========================================================
+# KYC API
+# =========================================================
+
+variable "kyc_container_image" {
+  description = "Docker image for the KYC API"
+  type        = string
+}
+
+variable "kyc_container_port" {
+  description = "Container port for the KYC API"
+  type        = number
+  default     = 8002
+}
+
+variable "kyc_desired_count" {
+  description = "Desired number of KYC API ECS tasks"
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.kyc_desired_count >= 0
+    error_message = "KYC desired count cannot be negative."
+  }
+}

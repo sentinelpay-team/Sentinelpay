@@ -9,8 +9,8 @@ resource "aws_iam_openid_connect_provider" "github" {
 }
 
 data "aws_iam_policy_document" "github_actions_assume_role" {
-
   statement {
+    sid    = "GitHubActionsOIDC"
     effect = "Allow"
 
     actions = [
@@ -35,11 +35,12 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
     }
 
     condition {
-      test     = "StringLike"
+      test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
 
       values = [
-        "repo:${var.github_organization}@321830913/${var.github_repository}@1348603997:*"
+        "repo:${var.github_organization}@321830913/${var.github_repository}@1348603997:ref:refs/heads/main",
+        "repo:${var.github_organization}@321830913/${var.github_repository}@1348603997:pull_request"
       ]
     }
   }
@@ -50,6 +51,7 @@ resource "aws_iam_role" "github_actions" {
 
   assume_role_policy = data.aws_iam_policy_document.github_actions_assume_role.json
 }
+
 resource "aws_iam_role_policy" "github_deployment" {
   name   = "${var.project_name}-${var.environment}-github-deployment"
   role   = aws_iam_role.github_actions.id
